@@ -4,9 +4,9 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConnParams {
-    npy_file: String,
-    port: Option<u16>,
-    tos: Option<u8>,
+    pub npy_file: String,
+    pub port: Option<u16>,
+    pub tos: Option<u8>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -38,7 +38,7 @@ impl StreamParam {
 
         // validate port number, or random
         if ! (1024..).contains( &param.port.unwrap_or(0) ) {
-            param.port = rng.gen();
+            param.port = Some( rng.gen_range(1025..=65535) );
         }
 
         // validate tos value, or 0
