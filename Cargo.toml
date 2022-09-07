@@ -1,0 +1,8 @@
+[package]
+name = "stream-replay"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version="1.20", features=["full"] }
+mio = "0.8"
