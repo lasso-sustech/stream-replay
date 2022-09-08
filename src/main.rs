@@ -47,16 +47,16 @@ async fn send_loop(target_address:String, start_offset:usize, param: StreamParam
         }
         StreamParam::UDP(param) => {
             let (trace, port, tos) = load_trace(param);
-            //create TCP socket
+            // create TCP socket
             let sock = TcpSocket::new_v4()?;
             sock.set_tos(tos as u32).unwrap();
-            //connect to server
+            // connect to server
             let addr = format!("{}:{}",target_address,port).parse().unwrap();
             let _stream = sock.connect( addr ).await?;
             let mut idx = start_offset;
             loop {
                 idx = (idx + 1) % trace.shape()[1];
-                //FIXME: prepare buffer and send and sleep
+                //FIXME: prepare buffer and send
                 sleep( Duration::from_nanos(trace[[1, idx]]) ).await;
             }
         }
