@@ -8,8 +8,12 @@ use ndarray::prelude::*;
 use ndarray_npy::read_npy;
 use tokio::net::{TcpSocket, UdpSocket};
 use tokio::time::{sleep, Duration};
+use tokio::io::AsyncWriteExt;
 
 use crate::conf::{StreamParam, ConnParams};
+
+const UDP_MAX_LENGTH:usize = 65507;
+const TCP_MAX_LENGTH:usize = 65535;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about=None)]
@@ -30,34 +34,51 @@ fn load_trace(param: ConnParams) -> (Array2<u64>, u16, u8) {
 }
 
 async fn send_loop(target_address:String, start_offset:usize, param: StreamParam) -> Result<(), std::io::Error> {
+    let buffer = [32u8; 500*1024];
+
     match param {
-        StreamParam::TCP(param) => {
+        StreamParam::UDP(param) => {
             let (trace, port, tos) = load_trace(param);
             // create UDP socket
-            let sock = UdpSocket::bind("0.0.0.0").await?;
+            let sock = UdpSocket::bind("0.0.0.0:12345").await?;
             sock.set_tos(tos as u32).unwrap();
             // connect to server
-            sock.connect( format!("{}:{}",target_address,port) ).await?;
+            // sock.connect( format!("{}:{}",target_address,port) ).await?;
+            let addr = format!("{}:{}",target_address,port);
             let mut idx = start_offset;
             loop {
-                idx = (idx + 1) % trace.shape()[1];
-                //FIXME: prepare buffer and send
-                sleep( Duration::from_nanos(trace[[1, idx]]) ).await;
+                idx = (idx + 1) % trace.shape()[0];
+                
+                let len = trace[[idx, 1]] as usize;
+                for i in (0..len).step_by(UDP_MAX_LENGTH) {
+                    let _rng = i..std::cmp::min(i+UDP_MAX_LENGTH, len);
+                    let _len = sock.send_to(&buffer[_rng], addr.clone()).await?;
+                    println!("[UDP] {:?} bytes sent", _len);
+                }
+
+                sleep( Duration::from_nanos(trace[[idx, 0]]) ).await;
             }
         }
-        StreamParam::UDP(param) => {
+        StreamParam::TCP(param) => {
             let (trace, port, tos) = load_trace(param);
             // create TCP socket
             let sock = TcpSocket::new_v4()?;
             sock.set_tos(tos as u32).unwrap();
             // connect to server
             let addr = format!("{}:{}",target_address,port).parse().unwrap();
-            let _stream = sock.connect( addr ).await?;
+            let mut stream = sock.connect( addr ).await?;
             let mut idx = start_offset;
             loop {
-                idx = (idx + 1) % trace.shape()[1];
-                //FIXME: prepare buffer and send
-                sleep( Duration::from_nanos(trace[[1, idx]]) ).await;
+                idx = (idx + 1) % trace.shape()[0];
+
+                let len = trace[[1, idx]] as usize;
+                for i in (0..len).step_by(TCP_MAX_LENGTH) {
+                    let _rng = i..std::cmp::min(i+TCP_MAX_LENGTH, len);
+                    let _len = stream.write_all(&buffer[_rng]).await?;
+                    println!("[TCP] {:?} bytes sent", _len);
+                }
+
+                sleep( Duration::from_nanos(trace[[idx, 0]]) ).await;
             }
         }
     }
