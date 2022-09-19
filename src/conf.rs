@@ -16,6 +16,21 @@ pub enum StreamParam {
     UDP(ConnParams)
 }
 
+impl std::fmt::Display for StreamParam {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let (_type, _param) =
+        match self {
+            Self::TCP(p) => ("TCP", p),
+            Self::UDP(p) => ("UDP", p)
+        };
+        let _file:String = _param.npy_file.clone();
+        let _port = _param.port.unwrap();
+        let _tos  = _param.tos.unwrap();
+
+        write!(f, "{} {{ port:{}, tos:{}, file:\"{}\" }}", _type, _port, _tos, _file)
+    }
+}
+
 impl StreamParam {
     pub fn validate(mut self, root:Option<&Path>) -> Option<Self> {
         let mut rng = rand::thread_rng();

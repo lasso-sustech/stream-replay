@@ -34,7 +34,7 @@ fn load_trace(param: ConnParams) -> (Array2<u64>, u16, u8) {
 }
 
 async fn send_loop(target_address:String, start_offset:usize, param: StreamParam) -> Result<(), std::io::Error> {
-    let buffer = [32u8; 500*1024];
+    let buffer = [32u8; 100*1024];
 
     match param {
         StreamParam::UDP(param) => {
@@ -51,9 +51,9 @@ async fn send_loop(target_address:String, start_offset:usize, param: StreamParam
                 
                 let len = trace[[idx, 1]] as usize;
                 for i in (0..len).step_by(UDP_MAX_LENGTH) {
-                    let _rng = i..std::cmp::min(i+UDP_MAX_LENGTH, len);
+                    let _rng = 0..std::cmp::min(i+UDP_MAX_LENGTH, len)-i;
                     let _len = sock.send_to(&buffer[_rng], addr.clone()).await?;
-                    println!("[UDP] {:?} bytes sent", _len);
+                    // println!("[UDP] {:?} bytes sent", _len);
                 }
 
                 sleep( Duration::from_nanos(trace[[idx, 0]]) ).await;
@@ -75,7 +75,7 @@ async fn send_loop(target_address:String, start_offset:usize, param: StreamParam
                 for i in (0..len).step_by(TCP_MAX_LENGTH) {
                     let _rng = i..std::cmp::min(i+TCP_MAX_LENGTH, len);
                     let _len = stream.write_all(&buffer[_rng]).await?;
-                    println!("[TCP] {:?} bytes sent", _len);
+                    // println!("[TCP] {:?} bytes sent", _len);
                 }
 
                 sleep( Duration::from_nanos(trace[[idx, 0]]) ).await;
@@ -100,10 +100,11 @@ async fn main() {
     let streams: Vec<_> = streams.into_iter().filter_map( |x| x.validate(root) ).collect();
 
     // spawn the thread
-    let mut handles:Vec<_> = streams.into_iter().map(|param| {
+    let mut handles:Vec<_> = streams.into_iter().enumerate().map(|(i, param)| {
         let start_offset: usize = rng.gen();
         let target_address = args.target_ip_address.clone();
         tokio::spawn(async move {
+            println!("{}. {} on ...", i+1, param);
             send_loop(target_address, start_offset, param).await
         })
     }).collect();
