@@ -12,7 +12,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::conf::{StreamParam, ConnParams};
 
-const UDP_MAX_LENGTH:usize = 65507;
+const UDP_MAX_LENGTH:usize = 1500 - 20 - 8;
 const TCP_MAX_LENGTH:usize = 65535;
 
 #[derive(Parser, Debug)]
