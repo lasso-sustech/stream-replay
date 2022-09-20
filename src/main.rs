@@ -40,7 +40,7 @@ async fn send_loop(target_address:String, start_offset:usize, param: StreamParam
         StreamParam::UDP(param) => {
             let (trace, port, tos) = load_trace(param);
             // create UDP socket
-            let sock = UdpSocket::bind("0.0.0.0:12345").await?;
+            let sock = UdpSocket::bind("0.0.0.0:0").await?;
             sock.set_tos(tos as u32).unwrap();
             // connect to server
             // sock.connect( format!("{}:{}",target_address,port) ).await?;
