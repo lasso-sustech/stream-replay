@@ -1,7 +1,9 @@
 # TCP/UDP stream replay
 
+### Features
 
-### TODO
-- read `npy` file for inter-arrival array and packet length;
-- use `tokio` for timer event trigger;
-- send TCP/UDP packets with certain buffer length with certain delay;
+- Read replay configuration from `manifest.json` file;
+
+- Support concurrent TCP/UDP stream replay;
+
+- Easily manipulate data trace with `npy` file.
