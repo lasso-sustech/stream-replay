@@ -73,7 +73,7 @@ async fn send_loop(target_address:String, start_offset:usize, param: StreamParam
 
                 let len = trace[[1, idx]] as usize;
                 for i in (0..len).step_by(TCP_MAX_LENGTH) {
-                    let _rng = i..std::cmp::min(i+TCP_MAX_LENGTH, len);
+                    let _rng = 0..std::cmp::min(i+TCP_MAX_LENGTH, len)-i;
                     let _len = stream.write_all(&buffer[_rng]).await?;
                     // println!("[TCP] {:?} bytes sent", _len);
                 }
