@@ -21,6 +21,10 @@ where T:Sized + Copy
     }
 
     pub fn push(&mut self, item: T) {
+        if self.step > 0 {
+            self.ptr = (self.ptr + 1) % self.size;
+        }
+        //
         if self.window.len() < self.size {
             self.window.push( item );
         }
@@ -29,11 +33,10 @@ where T:Sized + Copy
         }
         //
         self.step += 1;
-        self.ptr = (self.ptr + 1) % self.size;
     }
 
     pub fn get(&self, index: usize) -> T {
-        let index = (self.ptr - 1 + index) % self.size;
+        let index = (self.ptr + index) % self.size;
         self.window[index]
     }
 }
