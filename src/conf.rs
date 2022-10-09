@@ -7,6 +7,7 @@ pub struct ConnParams {
     pub npy_file: String,
     pub port: Option<u16>,
     pub tos: Option<u8>,
+    pub throttle: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -24,10 +25,20 @@ impl std::fmt::Display for StreamParam {
             Self::UDP(p) => ("UDP", p)
         };
         let _file:String = _param.npy_file.clone();
-        let _port = _param.port.unwrap();
-        let _tos  = _param.tos.unwrap();
 
-        write!(f, "{} {{ port:{}, tos:{}, file:\"{}\" }}", _type, _port, _tos, _file)
+        write!(f, "{} {{ ", _type)?;
+        {
+            if let Some(port) = _param.port {
+                write!(f, "port: {}, ", port)?;
+            }
+            if let Some(tos) = _param.tos {
+                write!(f, "tos: {}, ", tos)?;
+            }
+            if let Some(throttle) = _param.throttle {
+                write!(f, "throttle: {} Mbps, ", throttle)?;
+            }
+        }
+        write!(f, "file:\"{}\"}}", _file)
     }
 }
 
@@ -56,10 +67,12 @@ impl StreamParam {
             param.port = Some( rng.gen_range(1025..=65535) );
         }
 
-        // validate tos value, or 0
-        param.tos = Some( param.tos.unwrap_or(0) );
-
         Some(self)
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Manifest {
+    pub window_size: usize,
+    pub streams: Vec<StreamParam>
+}
