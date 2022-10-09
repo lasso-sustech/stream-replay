@@ -7,7 +7,7 @@ type SIZE = usize;
 
 struct SlidingWindow<T> {
     ptr: usize,
-    pub step: u64,
+    pub step: usize,
     size: usize,
     window: Vec<T>
 }
@@ -35,9 +35,13 @@ where T:Sized + Copy
         self.step += 1;
     }
 
-    pub fn get(&self, index: usize) -> T {
-        let index = (self.ptr + index) % self.size;
-        self.window[index]
+    pub fn get_head(&self) -> T {
+        let index = if self.step > self.size {
+            (self.ptr + 1) % self.size
+        } else {
+            0
+        };
+        self.window[ index ]
     }
 }
 
@@ -61,7 +65,7 @@ impl RateThrottle {
         let acc_size: usize = self.window.window.iter().map(|&x| x.1).sum();
         let acc_size = acc_size  + size_bytes;
 
-        let acc_time = SystemTime::now().duration_since( self.window.get(0).0 ).unwrap();
+        let acc_time = SystemTime::now().duration_since( self.window.get_head().0 ).unwrap();
         let acc_time = acc_time.as_nanos() + interval_ns as u128;
 
         let average_rate_mbps = 8.0 * (acc_size as f64/1e6) / (acc_time as f64*1e-9);
