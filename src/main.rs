@@ -28,6 +28,19 @@ struct ProgArgs {
     manifest_file: String
 }
 
+const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - 6;
+#[repr(C,packed)]
+struct PacketStruct {
+    seq: u32,//4 Byte
+    offset: u16,// 2 Byte
+    payload: [u8; MAX_PAYLOAD_LEN]
+}
+impl PacketStruct {
+    fn new() -> Self {
+        PacketStruct { seq: 0, offset: 0, payload: [32u8; MAX_PAYLOAD_LEN] }
+    }
+}
+
 fn load_trace(param: ConnParams, window_size:usize) -> (Array2<u64>, u16, u8, RateThrottle) {
     let trace: Array2<u64> = read_npy(&param.npy_file).unwrap();
     let port = param.port.unwrap();
@@ -38,8 +51,15 @@ fn load_trace(param: ConnParams, window_size:usize) -> (Array2<u64>, u16, u8, Ra
     (trace, port, tos, throttle)
 }
 
+unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
+    ::std::slice::from_raw_parts(
+        (p as *const T) as *const u8,
+        ::std::mem::size_of::<T>(),
+    )
+}
+
 async fn send_loop(target_address:String, start_offset:usize, window_size:usize, param: StreamParam) -> Result<(), std::io::Error> {
-    let buffer = [32u8; 100*1024];
+    let mut packet = PacketStruct::new();
 
     match param {
         StreamParam::UDP(param) => {
@@ -60,11 +80,20 @@ async fn send_loop(target_address:String, start_offset:usize, window_size:usize,
                     sleep( Duration::from_micros(1) ).await;
                 }
                 // 2. send
-                for i in (0..size_bytes).step_by(UDP_MAX_LENGTH) {
-                    let _rng = 0..std::cmp::min(i+UDP_MAX_LENGTH, size_bytes)-i;
-                    let _len = sock.send_to(&buffer[_rng], addr.clone()).await?;
-                    // println!("[UDP] {:?} bytes sent", _len);
+                let (_num, _remains) = (size_bytes/UDP_MAX_LENGTH, size_bytes%UDP_MAX_LENGTH);
+                packet.seq += 1;
+                packet.offset = if _remains>0 {_num as u16+1} else {_num as u16};
+                for _ in 0.._num {
+                    let buffer = unsafe{ any_as_u8_slice(&packet) };
+                    let _len = sock.send_to(&buffer[..UDP_MAX_LENGTH], addr.clone()).await?;
+                    packet.offset -= 1;
                 }
+                if _remains>0 {
+                    packet.offset = 0;
+                    let buffer = unsafe{ any_as_u8_slice(&packet) };
+                    let _len = sock.send_to(&buffer[.._remains], addr.clone()).await?;
+                }
+                // println!("[UDP] {:?} bytes sent", _len);
                 // 3. wait
                 sleep( Duration::from_nanos(interval_ns) ).await;
             }
@@ -87,8 +116,9 @@ async fn send_loop(target_address:String, start_offset:usize, window_size:usize,
                     sleep( Duration::from_micros(1) ).await;
                 }
                 // 2. send
-                for i in (0..size_bytes).step_by(TCP_MAX_LENGTH) {
+                for i in (0..size_bytes).step_by(TCP_MAX_LENGTH).rev() {
                     let _rng = 0..std::cmp::min(i+TCP_MAX_LENGTH, size_bytes)-i;
+                    let buffer = unsafe{ any_as_u8_slice(&packet) };
                     let _len = stream.write_all(&buffer[_rng]).await?;
                     // println!("[TCP] {:?} bytes sent", _len);
                 }
