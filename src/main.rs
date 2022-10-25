@@ -113,7 +113,8 @@ async fn send_loop(target_address:String, start_offset:usize, window_size:usize,
             sock.set_tos(tos as u32).unwrap();
             // connect to server
             let addr = format!("{}:{}",target_address,port);
-            sock.connect(addr).await?;
+            let dst = addr.parse().unwrap();
+            // sock.connect(addr).await?;
 
             tokio::spawn(async move {
                 data_put_thread(tx, trace, start_offset, throttle).await;
@@ -129,7 +130,7 @@ async fn send_loop(target_address:String, start_offset:usize, window_size:usize,
                 // try to send packet
                 if let Some(packet) = fifo.get(0) {
                     let buffer = unsafe{ any_as_u8_slice(&packet) };
-                    match sock.try_send(buffer) {
+                    match sock.try_send_to(buffer, dst) {
                         Ok(_len) => {
                             // println!("[UDP] {:?} bytes sent", _len);
                             fifo.pop_front();
