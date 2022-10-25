@@ -34,17 +34,21 @@ struct ProgArgs {
     target_ip_address: String,
 }
 
-const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - 6;
+const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - 8;
 #[repr(C,packed)]
 #[derive(Copy, Clone, Debug)]
 struct PacketStruct {
     seq: u32,//4 Byte
     offset: u16,// 2 Byte
+    length: u16,//2 Byte
     payload: [u8; MAX_PAYLOAD_LEN]
 }
 impl PacketStruct {
     fn new() -> Self {
-        PacketStruct { seq: 0, offset: 0, payload: [32u8; MAX_PAYLOAD_LEN] }
+        PacketStruct { seq: 0, offset: 0, length: 0, payload: [32u8; MAX_PAYLOAD_LEN] }
+    }
+    fn set_length(&mut self, length: u16) {
+        self.length = length;
     }
     fn next_seq(&mut self, num: usize, remains:usize) {
         self.seq += 1;
@@ -93,17 +97,19 @@ fn producer_thread(tx: mpsc::Sender<PacketStruct>, trace: Array2<u64>, start_off
 
         // 1. throttle
         while throttle.exceeds_with(size_bytes, interval_ns) {
-            spin_sleeper.sleep( Duration::from_nanos(1) );
+            std::thread::sleep( Duration::from_nanos(10_000) );
         }
         // 2. send
         let (_num, _remains) = (size_bytes/UDP_MAX_LENGTH, size_bytes%UDP_MAX_LENGTH);
         packet.next_seq(_num, _remains);
+        packet.set_length(UDP_MAX_LENGTH as u16);
         for _ in 0.._num {
             tx.send( packet.clone() ).unwrap();
             packet.next_offset();
         }
         if _remains>0 {
             packet.next_offset();
+            packet.set_length(_remains as u16);
             tx.send( packet.clone() ).unwrap();
         }
         // 3. wait
@@ -127,14 +133,15 @@ fn consumer_thread(rx: mpsc::Receiver<PacketStruct>, addr:String, tos:u8) -> Res
         // try to get new packet
         if let Ok(packet) = rx.try_recv() {
             fifo.push_back(packet);
-            file.write_all( format!("{} {}", timestamp, fifo.len()).as_bytes() )?;
+            file.write_all( format!("{:.9} {}\n", timestamp, fifo.len()).as_bytes() )?;
         }
         // try to send packet
         if let Some(packet) = fifo.get(0) {
-            let buf = unsafe{ any_as_u8_slice(&packet) };
-            sock.send(buf)?;
+            let length = packet.length as usize;
+            let buf = unsafe{ any_as_u8_slice(packet) };
+            sock.send(&buf[..length])?;
             fifo.pop_front();
-            file.write_all( format!("{} {}", timestamp, fifo.len()).as_bytes() )?;
+            file.write_all( format!("{:.9} {}\n", timestamp, fifo.len()).as_bytes() )?;
         }
     }
 }
