@@ -1,21 +1,25 @@
 mod conf;
 mod throttle;
 
+use std::fs::File;
+use std::io::prelude::*;
+use std::time::SystemTime;
+use std::collections::VecDeque;
 use std::path::{Path};
 use clap::Parser;
 use serde_json;
 use rand::prelude::*;
 use ndarray::prelude::*;
 use ndarray_npy::read_npy;
-use tokio::net::{TcpSocket, UdpSocket};
-use tokio::time::{sleep, Duration};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{self, };
+use tokio::net::{UdpSocket};
+use tokio::time::{sleep, Duration, sleep_until, Instant};
+use tokio::sync::mpsc;
 
 use crate::conf::{Manifest, StreamParam, ConnParams};
 use crate::throttle::{RateThrottle};
 
 const UDP_MAX_LENGTH:usize = 1500 - 20 - 8;
-const TCP_MAX_LENGTH:usize = 65535;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about=None)]
@@ -30,6 +34,7 @@ struct ProgArgs {
 
 const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - 6;
 #[repr(C,packed)]
+#[derive(Copy, Clone, Debug)]
 struct PacketStruct {
     seq: u32,//4 Byte
     offset: u16,// 2 Byte
@@ -38,6 +43,13 @@ struct PacketStruct {
 impl PacketStruct {
     fn new() -> Self {
         PacketStruct { seq: 0, offset: 0, payload: [32u8; MAX_PAYLOAD_LEN] }
+    }
+    fn next_seq(&mut self, num: usize, remains:usize) {
+        self.seq += 1;
+        self.offset = if remains>0 {num as u16+1} else {num as u16};
+    }
+    fn next_offset(&mut self) {
+        self.offset -= 1;
     }
 }
 
@@ -58,74 +70,83 @@ unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
     )
 }
 
-async fn send_loop(target_address:String, start_offset:usize, window_size:usize, param: StreamParam) -> Result<(), std::io::Error> {
+async fn data_put_thread(tx: mpsc::Sender<PacketStruct>, trace: Array2<u64>, start_offset:usize, mut throttle: RateThrottle) {
     let mut packet = PacketStruct::new();
+    let mut idx = start_offset;
 
+    loop {
+        idx = (idx + 1) % trace.shape()[0];
+        let size_bytes = trace[[idx, 1]] as usize;
+        let interval_ns = trace[[idx, 0]];
+        let interval_deadline = Instant::now() + Duration::from_nanos(interval_ns);
+
+        // 1. throttle
+        while throttle.exceeds_with(size_bytes, interval_ns) {
+            sleep( Duration::from_micros(1) ).await;
+        }
+        // 2. send
+        let (_num, _remains) = (size_bytes/UDP_MAX_LENGTH, size_bytes%UDP_MAX_LENGTH);
+        packet.next_seq(_num, _remains);
+        for _ in 0.._num {
+            tx.send( packet.clone() ).await.unwrap();
+            packet.next_offset();
+        }
+        if _remains>0 {
+            packet.next_offset();
+            tx.send( packet.clone() ).await.unwrap();
+        }
+        // 3. wait
+        sleep_until( interval_deadline ).await;
+    }
+}
+
+async fn send_loop(target_address:String, start_offset:usize, window_size:usize, param: StreamParam) -> Result<(), std::io::Error> {    
     match param {
         StreamParam::UDP(param) => {
-            let (trace, port, tos, mut throttle) = load_trace(param, window_size);
+            let (tx, mut rx) = mpsc::channel(1000);
+            let mut fifo = VecDeque::new();
+            let mut file = File::create("log.txt")?;
+
+            let (trace, port, tos, throttle) = load_trace(param, window_size);
             // create UDP socket
             let sock = UdpSocket::bind("0.0.0.0:0").await?;
             sock.set_tos(tos as u32).unwrap();
             // connect to server
-            // sock.connect( format!("{}:{}",target_address,port) ).await?;
             let addr = format!("{}:{}",target_address,port);
-            let mut idx = start_offset;
+            sock.connect(addr).await?;
+
+            tokio::spawn(async move {
+                data_put_thread(tx, trace, start_offset, throttle).await;
+            });
+
             loop {
-                idx = (idx + 1) % trace.shape()[0];
-                let size_bytes = trace[[idx, 1]] as usize;
-                let interval_ns = trace[[idx, 0]];
-                // 1. throttle
-                while throttle.exceeds_with(size_bytes, interval_ns) {
-                    sleep( Duration::from_micros(1) ).await;
+                let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
+                // try to get new packet
+                if let Ok(packet) = rx.try_recv() {
+                    fifo.push_back(packet);
+                    file.write_all( format!("{} {}", timestamp, fifo.len()).as_bytes() )?; //NOTE:record
                 }
-                // 2. send
-                let (_num, _remains) = (size_bytes/UDP_MAX_LENGTH, size_bytes%UDP_MAX_LENGTH);
-                packet.seq += 1;
-                packet.offset = if _remains>0 {_num as u16+1} else {_num as u16};
-                for _ in 0.._num {
+                // try to send packet
+                if let Some(packet) = fifo.get(0) {
                     let buffer = unsafe{ any_as_u8_slice(&packet) };
-                    let _len = sock.send_to(&buffer[..UDP_MAX_LENGTH], addr.clone()).await?;
-                    packet.offset -= 1;
+                    match sock.try_send(buffer) {
+                        Ok(_len) => {
+                            // println!("[UDP] {:?} bytes sent", _len);
+                            fifo.pop_front();
+                            file.write_all( format!("{} {}", timestamp, fifo.len()).as_bytes() )?; //NOTE: record
+                        }
+                        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                            // no need to pop
+                        }
+                        Err(e) => {
+                            return Err(e);
+                        }
+                    }
                 }
-                if _remains>0 {
-                    packet.offset = 0;
-                    let buffer = unsafe{ any_as_u8_slice(&packet) };
-                    let _len = sock.send_to(&buffer[.._remains], addr.clone()).await?;
-                }
-                // println!("[UDP] {:?} bytes sent", _len);
-                // 3. wait
-                sleep( Duration::from_nanos(interval_ns) ).await;
             }
+        
         }
-        StreamParam::TCP(param) => {
-            let (trace, port, tos, mut throttle) = load_trace(param, window_size);
-            // create TCP socket
-            let sock = TcpSocket::new_v4()?;
-            sock.set_tos(tos as u32).unwrap();
-            // connect to server
-            let addr = format!("{}:{}",target_address,port).parse().unwrap();
-            let mut stream = sock.connect( addr ).await?;
-            let mut idx = start_offset;
-            loop {
-                idx = (idx + 1) % trace.shape()[0];
-                let size_bytes = trace[[idx, 1]] as usize;
-                let interval_ns = trace[[idx, 0]];
-                // 1. throttle
-                while throttle.exceeds_with(size_bytes, interval_ns) {
-                    sleep( Duration::from_micros(1) ).await;
-                }
-                // 2. send
-                for i in (0..size_bytes).step_by(TCP_MAX_LENGTH).rev() {
-                    let _rng = 0..std::cmp::min(i+TCP_MAX_LENGTH, size_bytes)-i;
-                    let buffer = unsafe{ any_as_u8_slice(&packet) };
-                    let _len = stream.write_all(&buffer[_rng]).await?;
-                    // println!("[TCP] {:?} bytes sent", _len);
-                }
-                // 3. wait
-                sleep( Duration::from_nanos(interval_ns) ).await;
-            }
-        }
+        StreamParam::TCP(_) => { Ok(()) }
     }
 
     // Ok(())

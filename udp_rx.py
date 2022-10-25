@@ -3,8 +3,8 @@ import argparse
 import socket, time
 
 def extract(buffer):
-    seq = int.from_bytes(buffer[0:4])
-    offset = int.from_bytes(buffer[4:5])
+    seq = int.from_bytes(buffer[0:4], 'little')
+    offset = int.from_bytes(buffer[4:5], 'little')
     return (seq, offset)
 
 def main(args):
@@ -33,7 +33,7 @@ def main(args):
     print( 'Average Throughput: {:.3f} Mbps'.format(average_throughput_Mbps) )
 
     if args.calc_delay:
-        _records = [x for x in received_record if x < time.time()]
+        _records = [x for x in received_record if x < 100]
         average_delay_ms = sum(_records)/len(_records) * 1E3
         print( 'Average Delay: {:.3f} ms'.format(average_delay_ms) )
     pass
