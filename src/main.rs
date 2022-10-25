@@ -123,8 +123,11 @@ fn consumer_thread(rx: mpsc::Receiver<PacketStruct>, addr:String, tos:u8) -> Res
 
     // create UDP socket
     let sock = UdpSocket::bind("0.0.0.0:0")?;
-    let fd = sock.as_raw_fd();
-    unsafe{ assert!( set_tos(fd, tos) ); }
+    sock.set_nonblocking(true).unwrap();
+    unsafe {
+        let fd = sock.as_raw_fd();
+        assert!( set_tos(fd, tos) );
+    }
     // connect to server
     sock.connect(addr)?;
     
@@ -139,8 +142,16 @@ fn consumer_thread(rx: mpsc::Receiver<PacketStruct>, addr:String, tos:u8) -> Res
         if let Some(packet) = fifo.get(0) {
             let length = packet.length as usize;
             let buf = unsafe{ any_as_u8_slice(packet) };
-            sock.send(&buf[..length])?;
-            fifo.pop_front();
+
+            match sock.send(&buf[..length]) {
+                Ok(_len) => {
+                    fifo.pop_front();
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    // nothing to do
+                }
+                Err(e) => panic!("encountered IO error: {e}")
+            }
             file.write_all( format!("{:.9} {}\n", timestamp, fifo.len()).as_bytes() )?;
         }
     }
