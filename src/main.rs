@@ -105,7 +105,7 @@ async fn send_loop(target_address:String, start_offset:usize, window_size:usize,
         StreamParam::UDP(param) => {
             let (tx, mut rx) = mpsc::channel(1000);
             let mut fifo = VecDeque::new();
-            let mut file = File::create("log.txt")?;
+            let mut file = File::create("data/log.txt")?;
 
             let (trace, port, tos, throttle) = load_trace(param, window_size);
             // create UDP socket
@@ -125,7 +125,7 @@ async fn send_loop(target_address:String, start_offset:usize, window_size:usize,
                 // try to get new packet
                 if let Ok(packet) = rx.try_recv() {
                     fifo.push_back(packet);
-                    file.write_all( format!("{} {}", timestamp, fifo.len()).as_bytes() )?; //NOTE:record
+                    file.write_all( format!("{:.9} {}\n", timestamp, fifo.len()).as_bytes() )?; //NOTE:record
                 }
                 // try to send packet
                 if let Some(packet) = fifo.get(0) {
@@ -134,7 +134,7 @@ async fn send_loop(target_address:String, start_offset:usize, window_size:usize,
                         Ok(_len) => {
                             // println!("[UDP] {:?} bytes sent", _len);
                             fifo.pop_front();
-                            file.write_all( format!("{} {}", timestamp, fifo.len()).as_bytes() )?; //NOTE: record
+                            file.write_all( format!("{:.9} {}\n", timestamp, fifo.len()).as_bytes() )?; //NOTE: record
                         }
                         Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                             // no need to pop
@@ -144,6 +144,8 @@ async fn send_loop(target_address:String, start_offset:usize, window_size:usize,
                         }
                     }
                 }
+                // yield to tokio
+                tokio::task::yield_now().await;
             }
         
         }
