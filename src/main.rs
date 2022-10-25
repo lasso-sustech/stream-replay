@@ -124,7 +124,7 @@ fn consumer_thread(rx: mpsc::Receiver<PacketStruct>, addr:String, tos:u8) -> Res
     // create UDP socket
     let sock = UdpSocket::bind("0.0.0.0:0")?;
     let fd = sock.as_raw_fd();
-    unsafe{ set_tos(fd, tos); }
+    unsafe{ assert!( set_tos(fd, tos) ); }
     // connect to server
     sock.connect(addr)?;
     
