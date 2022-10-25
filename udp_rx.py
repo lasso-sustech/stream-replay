@@ -13,9 +13,11 @@ def main(args):
     received_length = 0
     received_record = {}
 
+    print('waiting ...')
     init_seq, _ = extract( sock.recv(10240) )
     received_record[init_seq] = time.time()
     init_time = time.time()
+    print('started.')
 
     while time.time()-init_time < args.duration:
         _buffer = sock.recv(10240)

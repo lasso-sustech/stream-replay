@@ -2,7 +2,7 @@ use rand::prelude::*;
 use std::path::Path;
 use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug,Clone)]
 pub struct ConnParams {
     pub npy_file: String,
     pub port: Option<u16>,

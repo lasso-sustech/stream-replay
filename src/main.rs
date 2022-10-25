@@ -3,18 +3,20 @@ mod throttle;
 
 use std::fs::File;
 use std::io::prelude::*;
-use std::time::SystemTime;
 use std::collections::VecDeque;
-use std::path::{Path};
+
+use std::path::Path;
+use std::thread;
+use std::sync::mpsc;
+use std::net::UdpSocket;
+use std::time::{SystemTime, Duration};
+
 use clap::Parser;
 use serde_json;
 use rand::prelude::*;
 use ndarray::prelude::*;
 use ndarray_npy::read_npy;
-use tokio::io::{self, };
-use tokio::net::{UdpSocket};
-use tokio::time::{sleep, Duration, sleep_until, Instant};
-use tokio::sync::mpsc;
+use std::os::unix::io::AsRawFd;
 
 use crate::conf::{Manifest, StreamParam, ConnParams};
 use crate::throttle::{RateThrottle};
@@ -24,12 +26,12 @@ const UDP_MAX_LENGTH:usize = 1500 - 20 - 8;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about=None)]
 struct ProgArgs {
+    /// The manifest file tied with the data trace.
+    #[clap( value_parser )]
+    manifest_file: String,
     /// The target server IP address.
     #[clap( value_parser )]
     target_ip_address: String,
-    /// The manifest file tied with the data trace.
-    #[clap( value_parser )]
-    manifest_file: String
 }
 
 const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - 6;
@@ -70,93 +72,74 @@ unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
     )
 }
 
-async fn data_put_thread(tx: mpsc::Sender<PacketStruct>, trace: Array2<u64>, start_offset:usize, mut throttle: RateThrottle) {
+unsafe fn set_tos(fd: i32, tos: u8) -> bool {
+    let value = &(tos as i32) as *const libc::c_int as *const libc::c_void;
+    let option_len = std::mem::size_of::<libc::c_int>() as u32;
+    let res = libc::setsockopt(fd, libc::IPPROTO_IP, libc::IP_TOS, value, option_len);
+
+    res == 0
+}
+
+fn producer_thread(tx: mpsc::Sender<PacketStruct>, trace: Array2<u64>, start_offset:usize, mut throttle: RateThrottle) {
     let mut packet = PacketStruct::new();
     let mut idx = start_offset;
+    let spin_sleeper = spin_sleep::SpinSleeper::new(10_000)
+                        .with_spin_strategy(spin_sleep::SpinStrategy::YieldThread);
 
     loop {
         idx = (idx + 1) % trace.shape()[0];
         let size_bytes = trace[[idx, 1]] as usize;
         let interval_ns = trace[[idx, 0]];
-        let interval_deadline = Instant::now() + Duration::from_nanos(interval_ns);
 
         // 1. throttle
         while throttle.exceeds_with(size_bytes, interval_ns) {
-            sleep( Duration::from_micros(1) ).await;
+            spin_sleeper.sleep( Duration::from_nanos(1) );
         }
         // 2. send
         let (_num, _remains) = (size_bytes/UDP_MAX_LENGTH, size_bytes%UDP_MAX_LENGTH);
         packet.next_seq(_num, _remains);
         for _ in 0.._num {
-            tx.send( packet.clone() ).await.unwrap();
+            tx.send( packet.clone() ).unwrap();
             packet.next_offset();
         }
         if _remains>0 {
             packet.next_offset();
-            tx.send( packet.clone() ).await.unwrap();
+            tx.send( packet.clone() ).unwrap();
         }
         // 3. wait
-        sleep_until( interval_deadline ).await;
+        spin_sleeper.sleep( Duration::from_nanos(interval_ns) );
     }
 }
 
-async fn send_loop(target_address:String, start_offset:usize, window_size:usize, param: StreamParam) -> Result<(), std::io::Error> {    
-    match param {
-        StreamParam::UDP(param) => {
-            let (tx, mut rx) = mpsc::channel(1000);
-            let mut fifo = VecDeque::new();
-            let mut file = File::create("data/log.txt")?;
+fn consumer_thread(rx: mpsc::Receiver<PacketStruct>, addr:String, tos:u8) -> Result<(), std::io::Error> {
+    let mut fifo = VecDeque::new();
+    let mut file = File::create("data/log.txt")?;
 
-            let (trace, port, tos, throttle) = load_trace(param, window_size);
-            // create UDP socket
-            let sock = UdpSocket::bind("0.0.0.0:0").await?;
-            sock.set_tos(tos as u32).unwrap();
-            // connect to server
-            let addr = format!("{}:{}",target_address,port);
-            let dst = addr.parse().unwrap();
-            // sock.connect(addr).await?;
-
-            tokio::spawn(async move {
-                data_put_thread(tx, trace, start_offset, throttle).await;
-            });
-
-            loop {
-                let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
-                // try to get new packet
-                if let Ok(packet) = rx.try_recv() {
-                    fifo.push_back(packet);
-                    file.write_all( format!("{:.9} {}\n", timestamp, fifo.len()).as_bytes() )?; //NOTE:record
-                }
-                // try to send packet
-                if let Some(packet) = fifo.get(0) {
-                    let buffer = unsafe{ any_as_u8_slice(&packet) };
-                    match sock.try_send_to(buffer, dst) {
-                        Ok(_len) => {
-                            // println!("[UDP] {:?} bytes sent", _len);
-                            fifo.pop_front();
-                            file.write_all( format!("{:.9} {}\n", timestamp, fifo.len()).as_bytes() )?; //NOTE: record
-                        }
-                        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                            // no need to pop
-                        }
-                        Err(e) => {
-                            return Err(e);
-                        }
-                    }
-                }
-                // yield to tokio
-                tokio::task::yield_now().await;
-            }
-        
+    // create UDP socket
+    let sock = UdpSocket::bind("0.0.0.0:0")?;
+    let fd = sock.as_raw_fd();
+    unsafe{ set_tos(fd, tos); }
+    // connect to server
+    sock.connect(addr)?;
+    
+    loop {
+        let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
+        // try to get new packet
+        if let Ok(packet) = rx.try_recv() {
+            fifo.push_back(packet);
+            file.write_all( format!("{} {}", timestamp, fifo.len()).as_bytes() )?;
         }
-        StreamParam::TCP(_) => { Ok(()) }
+        // try to send packet
+        if let Some(packet) = fifo.get(0) {
+            let buf = unsafe{ any_as_u8_slice(&packet) };
+            sock.send(buf)?;
+            fifo.pop_front();
+            file.write_all( format!("{} {}", timestamp, fifo.len()).as_bytes() )?;
+        }
     }
-
-    // Ok(())
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     let mut rng = rand::thread_rng();
 
     // read the manifest file
@@ -174,12 +157,22 @@ async fn main() {
     let mut handles:Vec<_> = streams.into_iter().enumerate().map(|(i, param)| {
         let start_offset: usize = rng.gen();
         let target_address = args.target_ip_address.clone();
-        tokio::spawn(async move {
-            println!("{}. {} on ...", i+1, param);
-            send_loop(target_address, start_offset, window_size, param).await
-        })
+        let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = param;
+        let (trace, port, tos, throttle) = load_trace(params.clone(), window_size);
+
+        let (tx, rx) = mpsc::channel::<PacketStruct>();
+        let producer = thread::spawn(move || {
+            producer_thread(tx, trace, start_offset, throttle);
+        });
+        let consumer = thread::spawn(move || {
+            let addr = format!("{}:{}", target_address, port); 
+            consumer_thread(rx, addr, tos)
+        });
+
+        println!("{}. {} on ...", i+1, param);
+        (producer, consumer)
     }).collect();
 
-    //wait on the last handle (maybe panic)
-    handles.remove( handles.len()-1 ).await.unwrap().unwrap()
+    //wait on the last consumer handle (maybe panic)
+    handles.remove( handles.len()-1 ).1.join().unwrap().unwrap();
 }
