@@ -119,7 +119,7 @@ fn producer_thread(tx: mpsc::Sender<PacketStruct>, trace: Array2<u64>, start_off
 
 fn consumer_thread(rx: mpsc::Receiver<PacketStruct>, addr:String, tos:u8) -> Result<(), std::io::Error> {
     let mut fifo = VecDeque::new();
-    let mut file = File::create("data/log.txt")?;
+    let mut file = File::create( format!("data/log-{}.txt", addr) )?;
 
     // create UDP socket
     let sock = UdpSocket::bind("0.0.0.0:0")?;
@@ -192,5 +192,5 @@ fn main() {
     }).collect();
 
     //wait on the last consumer handle (maybe panic)
-    handles.remove( handles.len()-1 ).1.join().unwrap().unwrap();
+    handles.remove( 0 ).1.join().unwrap().unwrap();
 }
