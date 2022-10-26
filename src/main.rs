@@ -191,6 +191,6 @@ fn main() {
         (producer, consumer)
     }).collect();
 
-    //wait on the last consumer handle (maybe panic)
+    //wait on the first consumer handle (maybe panic)
     handles.remove( 0 ).1.join().unwrap().unwrap();
 }
