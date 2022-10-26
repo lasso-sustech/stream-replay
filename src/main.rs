@@ -59,14 +59,14 @@ impl PacketStruct {
     }
 }
 
-fn load_trace(param: ConnParams, window_size:usize) -> (Array2<u64>, u16, u8, RateThrottle) {
-    let trace: Array2<u64> = read_npy(&param.npy_file).unwrap();
-    let port = param.port.unwrap();
+fn load_trace(param: ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, u8, RateThrottle)> {
+    let trace: Array2<u64> = read_npy(&param.npy_file).ok()?;
+    let port = param.port?;
     let tos = param.tos.unwrap_or(0);
     let throttle = param.throttle.unwrap_or(0.0);
     let throttle = RateThrottle::new(throttle, window_size);
 
-    (trace, port, tos, throttle)
+    Some((trace, port, tos, throttle))
 }
 
 unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
@@ -84,7 +84,7 @@ unsafe fn set_tos(fd: i32, tos: u8) -> bool {
     res == 0
 }
 
-fn producer_thread(tx: mpsc::Sender<PacketStruct>, trace: Array2<u64>, start_offset:usize, mut throttle: RateThrottle) {
+fn producer_thread(tx: mpsc::Sender<PacketStruct>, trace: Array2<u64>, start_offset:usize) {
     let mut packet = PacketStruct::new();
     let mut idx = start_offset;
     let spin_sleeper = spin_sleep::SpinSleeper::new(10_000)
@@ -95,11 +95,7 @@ fn producer_thread(tx: mpsc::Sender<PacketStruct>, trace: Array2<u64>, start_off
         let size_bytes = trace[[idx, 1]] as usize;
         let interval_ns = trace[[idx, 0]];
 
-        // 1. throttle
-        while throttle.exceeds_with(size_bytes, interval_ns) {
-            std::thread::sleep( Duration::from_nanos(10_000) );
-        }
-        // 2. send
+        // 1. send
         let (_num, _remains) = (size_bytes/UDP_MAX_LENGTH, size_bytes%UDP_MAX_LENGTH);
         packet.next_seq(_num, _remains);
         packet.set_length(UDP_MAX_LENGTH as u16);
@@ -107,17 +103,17 @@ fn producer_thread(tx: mpsc::Sender<PacketStruct>, trace: Array2<u64>, start_off
             tx.send( packet.clone() ).unwrap();
             packet.next_offset();
         }
-        if _remains>0 {
+        if _remains > 0 {
             packet.next_offset();
             packet.set_length(_remains as u16);
             tx.send( packet.clone() ).unwrap();
         }
-        // 3. wait
+        // 2. wait
         spin_sleeper.sleep( Duration::from_nanos(interval_ns) );
     }
 }
 
-fn consumer_thread(rx: mpsc::Receiver<PacketStruct>, addr:String, tos:u8) -> Result<(), std::io::Error> {
+fn consumer_thread(rx: mpsc::Receiver<PacketStruct>, addr:String, tos:u8, mut throttle: RateThrottle) -> Result<(), std::io::Error> {
     let mut fifo = VecDeque::new();
     let mut file = File::create( format!("data/log-{}.txt", addr) )?;
 
@@ -143,6 +139,11 @@ fn consumer_thread(rx: mpsc::Receiver<PacketStruct>, addr:String, tos:u8) -> Res
             let length = packet.length as usize;
             let buf = unsafe{ any_as_u8_slice(packet) };
 
+            // throttle and block
+            while throttle.exceeds_with(packet.length as usize) {
+                std::thread::sleep( Duration::from_nanos(100_000) );
+            }
+            
             match sock.send(&buf[..length]) {
                 Ok(_len) => {
                     fifo.pop_front();
@@ -176,15 +177,16 @@ fn main() {
         let start_offset: usize = rng.gen();
         let target_address = args.target_ip_address.clone();
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = param;
-        let (trace, port, tos, throttle) = load_trace(params.clone(), window_size);
+        let (trace, port, tos, throttle) = load_trace(params.clone(), window_size)
+                                            .expect( &format!("{} loading failed.", param) );
 
         let (tx, rx) = mpsc::channel::<PacketStruct>();
         let producer = thread::spawn(move || {
-            producer_thread(tx, trace, start_offset, throttle);
+            producer_thread(tx, trace, start_offset)
         });
         let consumer = thread::spawn(move || {
             let addr = format!("{}:{}", target_address, port); 
-            consumer_thread(rx, addr, tos)
+            consumer_thread(rx, addr, tos, throttle)
         });
 
         println!("{}. {} on ...", i+1, param);

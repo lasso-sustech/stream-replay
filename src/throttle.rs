@@ -36,7 +36,7 @@ impl RateThrottle {
         Self{ window, throttle }
     }
 
-    pub fn exceeds_with(&mut self, size_bytes:usize, interval_ns: u64) -> bool {
+    pub fn exceeds_with(&mut self, size_bytes:usize) -> bool {
         if self.throttle==0.0 || self.window.window.len()==0 {
             self.window.push(( SystemTime::now(), size_bytes ));
             return false;
@@ -46,7 +46,7 @@ impl RateThrottle {
         let acc_size = acc_size  + size_bytes;
 
         let acc_time = SystemTime::now().duration_since( self.window.window.get(0).unwrap().0 ).unwrap();
-        let acc_time = acc_time.as_nanos() + interval_ns as u128;
+        let acc_time = acc_time.as_nanos(); // + interval_ns as u128;
 
         let average_rate_mbps = 8.0 * (acc_size as f64/1e6) / (acc_time as f64*1e-9);
         if average_rate_mbps < self.throttle {
