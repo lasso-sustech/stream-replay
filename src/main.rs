@@ -87,7 +87,7 @@ unsafe fn set_tos(fd: i32, tos: u8) -> bool {
 fn producer_thread(tx: mpsc::Sender<PacketStruct>, trace: Array2<u64>, start_offset:usize) {
     let mut packet = PacketStruct::new();
     let mut idx = start_offset;
-    let spin_sleeper = spin_sleep::SpinSleeper::new(10_000)
+    let spin_sleeper = spin_sleep::SpinSleeper::new(100_000)
                         .with_spin_strategy(spin_sleep::SpinStrategy::YieldThread);
 
     loop {
@@ -134,16 +134,16 @@ fn consumer_thread(rx: mpsc::Receiver<PacketStruct>, addr:String, tos:u8, mut th
             fifo.push_back(packet);
             file.write_all( format!("{:.9} {}\n", timestamp, fifo.len()).as_bytes() )?;
         }
-        // try to send packet
+        // try to fetch the packet
         if let Some(packet) = fifo.get(0) {
+            // throttle (non-block)
             let length = packet.length as usize;
-            let buf = unsafe{ any_as_u8_slice(packet) };
-
-            // throttle and block
-            while throttle.exceeds_with(packet.length as usize) {
+            if throttle.exceeds_with(packet.length as usize) {
                 std::thread::sleep( Duration::from_nanos(100_000) );
+                continue;
             }
-            
+            // try to send the packet
+            let buf = unsafe{ any_as_u8_slice(packet) };
             match sock.send(&buf[..length]) {
                 Ok(_len) => {
                     fifo.pop_front();
