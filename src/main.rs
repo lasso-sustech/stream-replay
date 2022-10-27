@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 
 use std::path::Path;
 use std::thread;
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex, mpsc};
 use std::net::UdpSocket;
 use std::time::{SystemTime, Duration};
 
@@ -59,6 +59,10 @@ impl PacketStruct {
     }
 }
 
+type PacketSender   = mpsc::Sender<PacketStruct>;
+type PacketReceiver = mpsc::Receiver<PacketStruct>;
+type BrokerType = (PacketReceiver, PacketSender);
+
 fn load_trace(param: ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, u8, RateThrottle)> {
     let trace: Array2<u64> = read_npy(&param.npy_file).ok()?;
     let port = param.port?;
@@ -84,7 +88,7 @@ unsafe fn set_tos(fd: i32, tos: u8) -> bool {
     res == 0
 }
 
-fn producer_thread(tx: mpsc::Sender<PacketStruct>, trace: Array2<u64>, start_offset:usize) {
+fn producer_thread(tx: PacketSender, trace: Array2<u64>, start_offset:usize) {
     let mut packet = PacketStruct::new();
     let mut idx = start_offset;
     let spin_sleeper = spin_sleep::SpinSleeper::new(100_000)
@@ -113,7 +117,7 @@ fn producer_thread(tx: mpsc::Sender<PacketStruct>, trace: Array2<u64>, start_off
     }
 }
 
-fn consumer_thread(rx: mpsc::Receiver<PacketStruct>, addr:String, tos:u8, mut throttle: RateThrottle) -> Result<(), std::io::Error> {
+fn consumer_thread(rx: PacketReceiver, addr:String, tos:u8, mut throttle: RateThrottle) -> Result<(), std::io::Error> {
     let mut fifo = VecDeque::new();
     let mut file = File::create( format!("data/log-{}.txt", addr) )?;
 
@@ -160,6 +164,8 @@ fn consumer_thread(rx: mpsc::Receiver<PacketStruct>, addr:String, tos:u8, mut th
 
 fn main() {
     let mut rng = rand::thread_rng();
+    //TODO: need a orchestrator to assign the queueing strategy
+    let _broker = Arc::new(Mutex::new( Vec::<BrokerType>::new() ));
 
     // read the manifest file
     let args = ProgArgs::parse();
