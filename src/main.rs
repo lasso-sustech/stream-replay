@@ -1,5 +1,6 @@
 mod conf;
 mod throttle;
+mod broker;
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -7,7 +8,7 @@ use std::collections::VecDeque;
 
 use std::path::Path;
 use std::thread;
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{mpsc};
 use std::net::UdpSocket;
 use std::time::{SystemTime, Duration};
 
@@ -20,6 +21,7 @@ use std::os::unix::io::AsRawFd;
 
 use crate::conf::{Manifest, StreamParam, ConnParams};
 use crate::throttle::{RateThrottle};
+use crate::broker::{GlobalBroker};
 
 const UDP_MAX_LENGTH:usize = 1500 - 20 - 8;
 
@@ -37,7 +39,7 @@ struct ProgArgs {
 const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - 8;
 #[repr(C,packed)]
 #[derive(Copy, Clone, Debug)]
-struct PacketStruct {
+pub struct PacketStruct {
     seq: u32,//4 Byte
     offset: u16,// 2 Byte
     length: u16,//2 Byte
@@ -59,18 +61,18 @@ impl PacketStruct {
     }
 }
 
-type PacketSender   = mpsc::Sender<PacketStruct>;
-type PacketReceiver = mpsc::Receiver<PacketStruct>;
-type BrokerType = (PacketReceiver, PacketSender);
+pub type PacketSender   = mpsc::Sender<PacketStruct>;
+pub type PacketReceiver = mpsc::Receiver<PacketStruct>;
 
-fn load_trace(param: ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, u8, RateThrottle)> {
+fn load_trace(param: ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, u8, RateThrottle,String)> {
     let trace: Array2<u64> = read_npy(&param.npy_file).ok()?;
     let port = param.port?;
     let tos = param.tos.unwrap_or(0);
     let throttle = param.throttle.unwrap_or(0.0);
     let throttle = RateThrottle::new(throttle, window_size);
+    let priority = param.priority.unwrap_or( "".into() );
 
-    Some((trace, port, tos, throttle))
+    Some((trace, port, tos, throttle, priority))
 }
 
 unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
@@ -88,7 +90,7 @@ unsafe fn set_tos(fd: i32, tos: u8) -> bool {
     res == 0
 }
 
-fn producer_thread(tx: PacketSender, trace: Array2<u64>, start_offset:usize) {
+fn source_thread(tx: PacketSender, trace: Array2<u64>, start_offset:usize) {
     let mut packet = PacketStruct::new();
     let mut idx = start_offset;
     let spin_sleeper = spin_sleep::SpinSleeper::new(100_000)
@@ -117,7 +119,7 @@ fn producer_thread(tx: PacketSender, trace: Array2<u64>, start_offset:usize) {
     }
 }
 
-fn consumer_thread(rx: PacketReceiver, addr:String, tos:u8, mut throttle: RateThrottle) -> Result<(), std::io::Error> {
+fn sink_thread(rx: PacketReceiver, addr:String, tos:u8, mut throttle: RateThrottle) -> Result<(), std::io::Error> {
     let mut fifo = VecDeque::new();
     let mut file = File::create( format!("data/log-{}.txt", addr) )?;
 
@@ -164,8 +166,8 @@ fn consumer_thread(rx: PacketReceiver, addr:String, tos:u8, mut throttle: RateTh
 
 fn main() {
     let mut rng = rand::thread_rng();
-    //TODO: need a orchestrator to assign the queueing strategy
-    let _broker = Arc::new(Mutex::new( Vec::<BrokerType>::new() ));
+    let mut broker = GlobalBroker::new();
+    let _handle = broker.start();
 
     // read the manifest file
     let args = ProgArgs::parse();
@@ -183,22 +185,27 @@ fn main() {
         let start_offset: usize = rng.gen();
         let target_address = args.target_ip_address.clone();
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = param;
-        let (trace, port, tos, throttle) = load_trace(params.clone(), window_size)
-                                            .expect( &format!("{} loading failed.", param) );
 
-        let (tx, rx) = mpsc::channel::<PacketStruct>();
-        let producer = thread::spawn(move || {
-            producer_thread(tx, trace, start_offset)
+        // add to broker
+        let (trace, port, tos, throttle, priority) = load_trace(params.clone(), window_size)
+                                            .expect( &format!("{} loading failed.", param) );
+        let (tx, rx) = broker.add(tos, priority);
+        // let (tx, rx) = mpsc::channel::<PacketStruct>();
+        
+        // spawn source and sink threads
+        let source = thread::spawn(move || {
+            source_thread(tx, trace, start_offset)
         });
-        let consumer = thread::spawn(move || {
+        let sink = thread::spawn(move || {
             let addr = format!("{}:{}", target_address, port); 
-            consumer_thread(rx, addr, tos, throttle)
+            sink_thread(rx, addr, tos, throttle)
         });
 
         println!("{}. {} on ...", i+1, param);
-        (producer, consumer)
+        (source, sink)
     }).collect();
 
-    //wait on the first consumer handle (maybe panic)
+    //wait on the first sink handle (maybe panic)
+    //TODO: block on the exit of last sink thread
     handles.remove( 0 ).1.join().unwrap().unwrap();
 }
