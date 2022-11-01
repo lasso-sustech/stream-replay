@@ -189,8 +189,7 @@ fn main() {
         // add to broker
         let (trace, port, tos, throttle, priority) = load_trace(params.clone(), window_size)
                                             .expect( &format!("{} loading failed.", param) );
-        let (tx, rx) = broker.add(tos, priority);
-        // let (tx, rx) = mpsc::channel::<PacketStruct>();
+        let (tx, rx) = broker.add(tos, priority); //mpsc::channel::<PacketStruct>();
         
         // spawn source and sink threads
         let source = thread::spawn(move || {
@@ -205,7 +204,7 @@ fn main() {
         (source, sink)
     }).collect();
 
-    //wait on the first sink handle (maybe panic)
     //TODO: block on the exit of last sink thread
+    //wait on the first sink handle (maybe panic)
     handles.remove( 0 ).1.join().unwrap().unwrap();
 }
