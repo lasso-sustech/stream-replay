@@ -66,10 +66,10 @@ impl GlobalBroker {
         };
 
         std::thread::spawn(move || loop {
-            apps[0].lock().unwrap().retain(passthrough); yield_now();
-            apps[1].lock().unwrap().retain(passthrough); yield_now();
-            apps[2].lock().unwrap().retain(passthrough); yield_now();
-            apps[3].lock().unwrap().retain(passthrough); yield_now();
+            for app in apps.iter() {
+                yield_now();
+                app.lock().unwrap().retain(passthrough); 
+            }
         })
     }
 

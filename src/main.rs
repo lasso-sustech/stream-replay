@@ -135,12 +135,12 @@ fn sink_thread(rx: PacketReceiver, addr:String, tos:u8, mut throttle: RateThrott
     
     loop {
         let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
-        // try to get new packet
+        //FIXME: fetch bulky packet
         if let Ok(packet) = rx.try_recv() {
             fifo.push_back(packet);
             file.write_all( format!("{:.9} {}\n", timestamp, fifo.len()).as_bytes() )?;
         }
-        // try to fetch the packet
+        //FIXME: send bulky packets until throttled or blocked
         if let Some(packet) = fifo.get(0) {
             // throttle (non-block)
             let length = packet.length as usize;
