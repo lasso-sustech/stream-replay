@@ -135,18 +135,18 @@ fn sink_thread(rx: PacketReceiver, addr:String, tos:u8, mut throttle: RateThrott
     
     loop {
         let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
-        //FIXME: fetch bulky packet
-        if let Ok(packet) = rx.try_recv() {
+        // fetch bulky packets
+        let _:Vec<_> = rx.try_iter().map(|packet| {
             fifo.push_back(packet);
-            file.write_all( format!("{:.9} {}\n", timestamp, fifo.len()).as_bytes() )?;
-        }
-        //FIXME: send bulky packets until throttled or blocked
-        if let Some(packet) = fifo.get(0) {
-            // throttle (non-block)
+            file.write_all( format!("{:.9} {}\n", timestamp, fifo.len()).as_bytes() )
+        }).collect();
+        // send bulky packets until throttled or blocked
+        while let Some(packet) = fifo.front() {
+            //FIXME: (maybe not here) try to throttle
             let length = packet.length as usize;
             if throttle.exceeds_with(packet.length as usize) {
                 std::thread::sleep( Duration::from_nanos(100_000) );
-                continue;
+                break; // throttle occurs
             }
             // try to send the packet
             let buf = unsafe{ any_as_u8_slice(packet) };
@@ -155,10 +155,11 @@ fn sink_thread(rx: PacketReceiver, addr:String, tos:u8, mut throttle: RateThrott
                     fifo.pop_front();
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    // nothing to do
+                    break; // block occurs
                 }
                 Err(e) => panic!("encountered IO error: {e}")
             }
+            // logging for successful sending
             file.write_all( format!("{:.9} {}\n", timestamp, fifo.len()).as_bytes() )?;
         }
     }
