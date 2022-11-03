@@ -9,9 +9,29 @@ struct Application {
     conn: BrokerConn,
     priority: String
 }
+type GuardedApplications = Arc<Mutex<Vec<Application>>>;
+
+fn policy_priority_fifo(apps: Vec<GuardedApplications>) {
+    let passthrough = |app:&Application| {
+        let _ = app.priority;
+        for packet in app.conn.0.try_iter() {
+            if let Err(_) = app.conn.1.send(packet) {
+                return false;
+            }
+        }
+        true
+    };
+
+    loop {
+        for app in apps.iter() {
+            yield_now();
+            app.lock().unwrap().retain(passthrough); 
+        }
+    }
+}
 
 pub struct GlobalBroker {
-    apps: [Arc<Mutex<Vec<Application>>>; 4]
+    apps: [GuardedApplications; 4]
 }
 
 impl GlobalBroker {
@@ -52,24 +72,10 @@ impl GlobalBroker {
 
     pub fn start(&self) -> JoinHandle<()> {
         let apps:Vec<_> = self.apps.iter().map(|app| app.clone()).collect();
-        let passthrough = |app:&Application| {
-            let _ = app.priority;
-            match app.conn.0.try_recv() {
-                Ok(packet) => {
-                    match app.conn.1.send(packet) {
-                        Ok(_)  => true,
-                        Err(_) => false
-                    }
-                },
-                Err(_) => true
-            }
-        };
+        
 
-        std::thread::spawn(move || loop {
-            for app in apps.iter() {
-                yield_now();
-                app.lock().unwrap().retain(passthrough); 
-            }
+        std::thread::spawn(move || {
+            policy_priority_fifo(apps);
         })
     }
 
