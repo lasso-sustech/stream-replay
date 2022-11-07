@@ -64,7 +64,7 @@ impl PacketStruct {
 pub type PacketSender   = mpsc::Sender<PacketStruct>;
 pub type PacketReceiver = mpsc::Receiver<PacketStruct>;
 
-fn load_trace(param: ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, u8, RateThrottle,String)> {
+fn load_trace(param: ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, u8, RateThrottle, String)> {
     let trace: Array2<u64> = read_npy(&param.npy_file).ok()?;
     let port = param.port?;
     let tos = param.tos.unwrap_or(0);
@@ -177,9 +177,11 @@ fn main() {
 
     let root = Path::new(&args.manifest_file).parent();
     let manifest:Manifest = serde_json::from_reader(reader).unwrap();
-    let window_size = manifest.window_size;
     let streams: Vec<_> = manifest.streams.into_iter().filter_map( |x| x.validate(root) ).collect();
+    let window_size = manifest.window_size;
+    let orchestrator = manifest.orchestrator;
     println!("Sliding Window Size: {}.", window_size);
+    println!("Orchestrator: {:?}.", orchestrator);
 
     // spawn the thread
     let mut handles:Vec<_> = streams.into_iter().enumerate().map(|(i, param)| {
@@ -189,8 +191,11 @@ fn main() {
 
         // add to broker
         let (trace, port, tos, throttle, priority) = load_trace(params.clone(), window_size)
-                                            .expect( &format!("{} loading failed.", param) );
-        let (tx, rx) = broker.add(tos, priority); //mpsc::channel::<PacketStruct>();
+                .expect( &format!("{} loading failed.", param) );
+        let (tx, rx) = match orchestrator {
+            Some(_) => broker.add(tos, priority),
+            None=> mpsc::channel::<PacketStruct>()
+        };
         
         // spawn source and sink threads
         let source = thread::spawn(move || {

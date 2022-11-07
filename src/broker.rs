@@ -72,7 +72,6 @@ impl GlobalBroker {
 
     pub fn start(&self) -> JoinHandle<()> {
         let apps:Vec<_> = self.apps.iter().map(|app| app.clone()).collect();
-        
 
         std::thread::spawn(move || {
             policy_priority_fifo(apps);

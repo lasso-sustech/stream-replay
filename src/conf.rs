@@ -74,6 +74,7 @@ impl StreamParam {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Manifest {
+    pub orchestrator: Option<String>,
     pub window_size: usize,
     pub streams: Vec<StreamParam>
 }
