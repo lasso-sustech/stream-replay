@@ -60,17 +60,27 @@ impl RateThrottler {
         for packet in packets.into_iter() {
             self.buffer.push_back(packet);
         }
-        // self.buffer.push_back(value)
     }
 
-    pub fn view(&self) -> Option<&PacketStruct> {
-        self.buffer.front()
+    pub fn try_consume<T>(&mut self, callback:T) -> bool
+    where T: Fn(&PacketStruct) -> bool {
+        match self.buffer.front().cloned() {
+            None => false,
+            Some(packet) => {
+                if self.exceeds_with(packet.length as usize) {
+                    std::thread::sleep( std::time::Duration::from_nanos(100_000) );
+                    return false;
+                }
+                match callback(&packet) {
+                    true => {
+                        self.consume();
+                        true
+                    }
+                    false => false
+                }
+            }
+        }
     }
-
-    // pub fn try_consume(&mut self, f:T)
-    // where T: Fn(&PacketStruct) -> Result<(), std::io::Error> {
-
-    // }
 
     pub fn consume(&mut self) -> Option<PacketStruct> {
         let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();

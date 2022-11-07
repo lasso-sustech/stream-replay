@@ -2,15 +2,11 @@ mod conf;
 mod throttle;
 mod broker;
 
-use std::fs::File;
-use std::io::prelude::*;
-use std::collections::VecDeque;
-
 use std::path::Path;
 use std::thread;
 use std::sync::{mpsc};
 use std::net::UdpSocket;
-use std::time::{SystemTime, Duration};
+use std::time::Duration;
 
 use clap::Parser;
 use serde_json;
@@ -136,26 +132,17 @@ fn sink_thread(rx: PacketReceiver, addr:String, tos:u8, mut throttler: RateThrot
     loop {
         // fetch bulky packets
         let packets = rx.try_iter().collect();
-        throttler.prepare( packets );
         // send bulky packets until throttled or blocked
-        while let Some(packet) = throttler.view() {
+        throttler.prepare( packets );
+        while throttler.try_consume(|packet| {
             let length = packet.length as usize;
-            if throttler.exceeds_with(packet.length as usize) {
-                std::thread::sleep( Duration::from_nanos(100_000) );
-                break; // throttle occurs
-            }
-            // try to send the packet
             let buf = unsafe{ any_as_u8_slice(packet) };
             match sock.send(&buf[..length]) {
-                Ok(_len) => {
-                    throttler.consume();
-                }
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    break; // block occurs
-                }
+                Ok(_len) => true,
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => false, // block occurs
                 Err(e) => panic!("encountered IO error: {e}")
             }
-        }
+        }) {}
     }
 }
 
