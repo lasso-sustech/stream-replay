@@ -1,5 +1,8 @@
 use std::time::SystemTime;
+use std::fs::File;
+use std::io::prelude::*;
 use std::collections::VecDeque;
+use crate::PacketStruct;
 
 type TIME = SystemTime;
 type SIZE = usize;
@@ -25,15 +28,19 @@ where T:Sized + Copy
     }
 }
 
-pub struct RateThrottle {
+pub struct RateThrottler {
+    logger: File,
     window: SlidingWindow<(TIME, SIZE)>,
+    buffer: VecDeque<PacketStruct>,
     pub throttle: f64,
 }
 
-impl RateThrottle {
-    pub fn new(throttle: f64, window_size:usize) -> Self {
+impl RateThrottler {
+    pub fn new(name:String, throttle: f64, window_size:usize) -> Self {
+        let buffer = VecDeque::new();
+        let logger = File::create( format!("data/log-{}.txt", name) ).unwrap();
         let window = SlidingWindow::new(window_size);
-        Self{ window, throttle }
+        Self{ logger, window, buffer, throttle }
     }
 
     pub fn current_rate_mbps(&self, extra_bytes:Option<usize>) -> f64 {
@@ -45,6 +52,30 @@ impl RateThrottle {
 
         let average_rate_mbps = 8.0 * (acc_size as f64/1e6) / (acc_time as f64*1e-9);
         average_rate_mbps
+    }
+
+    pub fn prepare(&mut self, packets: Vec<PacketStruct>) {
+        let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
+        self.logger.write_all( format!("{:.9} {}\n", timestamp, self.buffer.len()).as_bytes() ).unwrap();
+        for packet in packets.into_iter() {
+            self.buffer.push_back(packet);
+        }
+        // self.buffer.push_back(value)
+    }
+
+    pub fn view(&self) -> Option<&PacketStruct> {
+        self.buffer.front()
+    }
+
+    // pub fn try_consume(&mut self, f:T)
+    // where T: Fn(&PacketStruct) -> Result<(), std::io::Error> {
+
+    // }
+
+    pub fn consume(&mut self) -> Option<PacketStruct> {
+        let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
+        self.logger.write_all( format!("{:.9} {}\n", timestamp, self.buffer.len()).as_bytes() ).unwrap();
+        self.buffer.pop_front()
     }
 
     pub fn exceeds_with(&mut self, size_bytes:usize) -> bool {

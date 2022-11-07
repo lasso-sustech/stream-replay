@@ -20,8 +20,8 @@ use ndarray_npy::read_npy;
 use std::os::unix::io::AsRawFd;
 
 use crate::conf::{Manifest, StreamParam, ConnParams};
-use crate::throttle::{RateThrottle};
-use crate::broker::{GlobalBroker};
+use crate::throttle::RateThrottler;
+use crate::broker::GlobalBroker;
 
 const UDP_MAX_LENGTH:usize = 1500 - 20 - 8;
 
@@ -64,15 +64,18 @@ impl PacketStruct {
 pub type PacketSender   = mpsc::Sender<PacketStruct>;
 pub type PacketReceiver = mpsc::Receiver<PacketStruct>;
 
-fn load_trace(param: ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, u8, RateThrottle, String)> {
+fn load_trace(param: ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, u8, RateThrottler, String)> {
     let trace: Array2<u64> = read_npy(&param.npy_file).ok()?;
     let port = param.port?;
     let tos = param.tos.unwrap_or(0);
+
     let throttle = param.throttle.unwrap_or(0.0);
-    let throttle = RateThrottle::new(throttle, window_size);
+    let _name = format!("{}:{}", port, tos);
+    let throttler = RateThrottler::new(_name, throttle, window_size);
+    
     let priority = param.priority.unwrap_or( "".into() );
 
-    Some((trace, port, tos, throttle, priority))
+    Some((trace, port, tos, throttler, priority))
 }
 
 unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
@@ -119,10 +122,7 @@ fn source_thread(tx: PacketSender, trace: Array2<u64>, start_offset:usize) {
     }
 }
 
-fn sink_thread(rx: PacketReceiver, addr:String, tos:u8, mut throttle: RateThrottle) -> Result<(), std::io::Error> {
-    let mut fifo = VecDeque::new();
-    let mut file = File::create( format!("data/log-{}.txt", addr) )?;
-
+fn sink_thread(rx: PacketReceiver, addr:String, tos:u8, mut throttler: RateThrottler) -> Result<(), std::io::Error> {
     // create UDP socket
     let sock = UdpSocket::bind("0.0.0.0:0")?;
     sock.set_nonblocking(true).unwrap();
@@ -134,17 +134,13 @@ fn sink_thread(rx: PacketReceiver, addr:String, tos:u8, mut throttle: RateThrott
     sock.connect(addr)?;
     
     loop {
-        let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
         // fetch bulky packets
-        let _:Vec<_> = rx.try_iter().map(|packet| {
-            fifo.push_back(packet);
-            file.write_all( format!("{:.9} {}\n", timestamp, fifo.len()).as_bytes() )
-        }).collect();
+        let packets = rx.try_iter().collect();
+        throttler.prepare( packets );
         // send bulky packets until throttled or blocked
-        while let Some(packet) = fifo.front() {
-            //FIXME: (maybe not here) try to throttle
+        while let Some(packet) = throttler.view() {
             let length = packet.length as usize;
-            if throttle.exceeds_with(packet.length as usize) {
+            if throttler.exceeds_with(packet.length as usize) {
                 std::thread::sleep( Duration::from_nanos(100_000) );
                 break; // throttle occurs
             }
@@ -152,15 +148,13 @@ fn sink_thread(rx: PacketReceiver, addr:String, tos:u8, mut throttle: RateThrott
             let buf = unsafe{ any_as_u8_slice(packet) };
             match sock.send(&buf[..length]) {
                 Ok(_len) => {
-                    fifo.pop_front();
+                    throttler.consume();
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     break; // block occurs
                 }
                 Err(e) => panic!("encountered IO error: {e}")
             }
-            // logging for successful sending
-            file.write_all( format!("{:.9} {}\n", timestamp, fifo.len()).as_bytes() )?;
         }
     }
 }
@@ -190,7 +184,7 @@ fn main() {
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = param;
 
         // add to broker
-        let (trace, port, tos, throttle, priority) = load_trace(params.clone(), window_size)
+        let (trace, port, tos, throttler, priority) = load_trace(params.clone(), window_size)
                 .expect( &format!("{} loading failed.", param) );
         let (tx, rx) = match orchestrator {
             Some(_) => broker.add(tos, priority),
@@ -203,7 +197,7 @@ fn main() {
         });
         let sink = thread::spawn(move || {
             let addr = format!("{}:{}", target_address, port); 
-            sink_thread(rx, addr, tos, throttle)
+            sink_thread(rx, addr, tos, throttler)
         });
 
         println!("{}. {} on ...", i+1, param);
