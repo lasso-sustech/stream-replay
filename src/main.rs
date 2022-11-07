@@ -4,9 +4,9 @@ mod broker;
 
 use std::path::Path;
 use std::thread;
-use std::sync::{mpsc};
+use std::sync::{Arc, Mutex, mpsc};
 use std::net::UdpSocket;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use clap::Parser;
 use serde_json;
@@ -60,6 +60,8 @@ impl PacketStruct {
 pub type PacketSender   = mpsc::Sender<PacketStruct>;
 pub type PacketReceiver = mpsc::Receiver<PacketStruct>;
 
+type BlockedSignal = Arc<Mutex<bool>>;
+
 fn load_trace(param: ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, u8, RateThrottler, String)> {
     let trace: Array2<u64> = read_npy(&param.npy_file).ok()?;
     let port = param.port?;
@@ -89,7 +91,7 @@ unsafe fn set_tos(fd: i32, tos: u8) -> bool {
     res == 0
 }
 
-fn source_thread(tx: PacketSender, trace: Array2<u64>, start_offset:usize) {
+fn source_thread(tx: PacketSender, trace: Array2<u64>, start_offset:usize, mut throttler: RateThrottler, blocked_signal:BlockedSignal) {
     let mut packet = PacketStruct::new();
     let mut idx = start_offset;
     let spin_sleeper = spin_sleep::SpinSleeper::new(100_000)
@@ -99,26 +101,46 @@ fn source_thread(tx: PacketSender, trace: Array2<u64>, start_offset:usize) {
         idx = (idx + 1) % trace.shape()[0];
         let size_bytes = trace[[idx, 1]] as usize;
         let interval_ns = trace[[idx, 0]];
+        let deadline = SystemTime::now() + Duration::from_nanos(interval_ns);
 
-        // 1. send
+        // 1. generate packets
+        let mut packets = Vec::new();
         let (_num, _remains) = (size_bytes/UDP_MAX_LENGTH, size_bytes%UDP_MAX_LENGTH);
         packet.next_seq(_num, _remains);
         packet.set_length(UDP_MAX_LENGTH as u16);
         for _ in 0.._num {
-            tx.send( packet.clone() ).unwrap();
+            packets.push( packet.clone() );
             packet.next_offset();
         }
         if _remains > 0 {
             packet.next_offset();
             packet.set_length(_remains as u16);
-            tx.send( packet.clone() ).unwrap();
+            packets.push( packet.clone() );
         }
-        // 2. wait
-        spin_sleeper.sleep( Duration::from_nanos(interval_ns) );
+        throttler.prepare( packets );
+
+        // 2. send aware of blocked status
+        while SystemTime::now() < deadline {
+            let _signal = blocked_signal.lock().unwrap();
+            if !(*_signal) {
+                match throttler.try_consume(|packet| {
+                    tx.send(packet).unwrap();
+                    true
+                }) {
+                    Some(_) => continue,
+                    None=> break
+                }
+            }
+        }
+
+        // 3. sleep until next arrival
+        if let Ok(remaining_time) = deadline.duration_since( SystemTime::now() ) {
+            spin_sleeper.sleep( remaining_time );
+        }
     }
 }
 
-fn sink_thread(rx: PacketReceiver, addr:String, tos:u8, mut throttler: RateThrottler) -> Result<(), std::io::Error> {
+fn sink_thread(rx: PacketReceiver, addr:String, tos:u8, blocked_signal:BlockedSignal) -> Result<(), std::io::Error> {
     // create UDP socket
     let sock = UdpSocket::bind("0.0.0.0:0")?;
     sock.set_nonblocking(true).unwrap();
@@ -131,18 +153,26 @@ fn sink_thread(rx: PacketReceiver, addr:String, tos:u8, mut throttler: RateThrot
     
     loop {
         // fetch bulky packets
-        let packets = rx.try_iter().collect();
-        // send bulky packets until throttled or blocked
-        throttler.prepare( packets );
-        while throttler.try_consume(|packet| {
+        let packets:Vec<_> = rx.try_iter().collect();
+        // send bulky packets aware of block status
+        for packet in packets.iter() {
             let length = packet.length as usize;
             let buf = unsafe{ any_as_u8_slice(packet) };
-            match sock.send(&buf[..length]) {
-                Ok(_len) => true,
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => false, // block occurs
-                Err(e) => panic!("encountered IO error: {e}")
-            }
-        }) {}
+            loop {
+                let mut _signal = blocked_signal.lock().unwrap();
+                match sock.send(&buf[..length]) {
+                    Ok(_len) => {
+                        *_signal = false;
+                        break
+                    }
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        *_signal = true;
+                        continue // block occurs
+                    }
+                    Err(e) => panic!("encountered IO error: {e}")
+                }
+            }             
+        }
     }
 }
 
@@ -170,6 +200,9 @@ fn main() {
         let target_address = args.target_ip_address.clone();
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = param;
 
+        // define block signal
+        let blocked_signal:BlockedSignal = Arc::new(Mutex::new(false));
+
         // add to broker
         let (trace, port, tos, throttler, priority) = load_trace(params.clone(), window_size)
                 .expect( &format!("{} loading failed.", param) );
@@ -179,12 +212,13 @@ fn main() {
         };
         
         // spawn source and sink threads
+        let cloned_blocked_signal = Arc::clone(&blocked_signal);
         let source = thread::spawn(move || {
-            source_thread(tx, trace, start_offset)
+            source_thread(tx, trace, start_offset, throttler, Arc::clone(&blocked_signal))
         });
         let sink = thread::spawn(move || {
             let addr = format!("{}:{}", target_address, port); 
-            sink_thread(rx, addr, tos, throttler)
+            sink_thread(rx, addr, tos, cloned_blocked_signal)
         });
 
         println!("{}. {} on ...", i+1, param);

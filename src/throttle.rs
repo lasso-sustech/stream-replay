@@ -62,21 +62,21 @@ impl RateThrottler {
         }
     }
 
-    pub fn try_consume<T>(&mut self, callback:T) -> bool
-    where T: Fn(&PacketStruct) -> bool {
+    pub fn try_consume<T>(&mut self, callback:T) -> Option<bool>
+    where T: Fn(PacketStruct) -> bool {
         match self.buffer.front().cloned() {
-            None => false,
+            None => None,
             Some(packet) => {
                 if self.exceeds_with(packet.length as usize) {
                     std::thread::sleep( std::time::Duration::from_nanos(100_000) );
-                    return false;
+                    return Some(false);
                 }
-                match callback(&packet) {
+                match callback(packet) {
                     true => {
                         self.consume();
-                        true
+                        Some(true)
                     }
-                    false => false
+                    false => Some(false)
                 }
             }
         }
