@@ -1,5 +1,6 @@
-use std::thread::{JoinHandle, yield_now};
+use std::thread::{self, JoinHandle, yield_now};
 use std::sync::{Arc, Mutex, mpsc};
+use std::time::Duration;
 
 use crate::{PacketStruct, PacketSender, PacketReceiver};
 
@@ -25,7 +26,8 @@ fn policy_priority_fifo(apps: Vec<GuardedApplications>) {
     loop {
         for app in apps.iter() {
             yield_now();
-            app.lock().unwrap().retain(passthrough); 
+            app.lock().unwrap().retain(passthrough);
+            thread::sleep( Duration::from_micros(50) );
         }
     }
 }
