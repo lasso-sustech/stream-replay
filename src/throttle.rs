@@ -2,7 +2,7 @@ use std::time::SystemTime;
 use std::fs::File;
 use std::io::prelude::*;
 use std::collections::VecDeque;
-use crate::PacketStruct;
+use crate::packet::PacketStruct;
 
 type TIME = SystemTime;
 type SIZE = usize;

@@ -1,4 +1,5 @@
 mod conf;
+mod packet;
 mod throttle;
 mod broker;
 
@@ -16,10 +17,9 @@ use ndarray_npy::read_npy;
 use std::os::unix::io::AsRawFd;
 
 use crate::conf::{Manifest, StreamParam, ConnParams};
+use crate::packet::*;
 use crate::throttle::RateThrottler;
 use crate::broker::GlobalBroker;
-
-const UDP_MAX_LENGTH:usize = 1500 - 20 - 8;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about=None)]
@@ -32,37 +32,23 @@ struct ProgArgs {
     target_ip_address: String,
 }
 
-const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - 8;
-#[repr(C,packed)]
-#[derive(Copy, Clone, Debug)]
-pub struct PacketStruct {
-    seq: u32,//4 Byte
-    offset: u16,// 2 Byte
-    length: u16,//2 Byte
-    payload: [u8; MAX_PAYLOAD_LEN]
-}
-impl PacketStruct {
-    fn new() -> Self {
-        PacketStruct { seq: 0, offset: 0, length: 0, payload: [32u8; MAX_PAYLOAD_LEN] }
-    }
-    fn set_length(&mut self, length: u16) {
-        self.length = length;
-    }
-    fn next_seq(&mut self, num: usize, remains:usize) {
-        self.seq += 1;
-        self.offset = if remains>0 {num as u16+1} else {num as u16};
-    }
-    fn next_offset(&mut self) {
-        self.offset -= 1;
-    }
-}
-
-pub type PacketSender   = mpsc::Sender<PacketStruct>;
-pub type PacketReceiver = mpsc::Receiver<PacketStruct>;
-
 type BlockedSignal = Arc<Mutex<bool>>;
 
-fn load_trace(param: ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, u8, RateThrottler, String)> {
+unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
+    ::std::slice::from_raw_parts(
+        (p as *const T) as *const u8,
+        ::std::mem::size_of::<T>(),
+    )
+}
+
+unsafe fn set_tos(fd: i32, tos: u8) -> bool {
+    let value = &(tos as i32) as *const libc::c_int as *const libc::c_void;
+    let option_len = std::mem::size_of::<libc::c_int>() as u32;
+    let res = libc::setsockopt(fd, libc::IPPROTO_IP, libc::IP_TOS, value, option_len);
+    res == 0
+}
+
+fn load_trace(param:ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, u8, RateThrottler, String)> {
     let trace: Array2<u64> = read_npy(&param.npy_file).ok()?;
     let port = param.port?;
     let tos = param.tos.unwrap_or(0);
@@ -76,23 +62,8 @@ fn load_trace(param: ConnParams, window_size:usize) -> Option<(Array2<u64>, u16,
     Some((trace, port, tos, throttler, priority))
 }
 
-unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
-    ::std::slice::from_raw_parts(
-        (p as *const T) as *const u8,
-        ::std::mem::size_of::<T>(),
-    )
-}
-
-unsafe fn set_tos(fd: i32, tos: u8) -> bool {
-    let value = &(tos as i32) as *const libc::c_int as *const libc::c_void;
-    let option_len = std::mem::size_of::<libc::c_int>() as u32;
-    let res = libc::setsockopt(fd, libc::IPPROTO_IP, libc::IP_TOS, value, option_len);
-
-    res == 0
-}
-
-fn source_thread(tx: PacketSender, trace: Array2<u64>, start_offset:usize, mut throttler: RateThrottler, blocked_signal:BlockedSignal) {
-    let mut packet = PacketStruct::new();
+fn source_thread(tx:PacketSender, trace:Array2<u64>, start_offset:usize, port:u16, mut throttler:RateThrottler, blocked_signal:BlockedSignal) {
+    let mut packet = PacketStruct::new(port);
     let mut idx = start_offset;
     let spin_sleeper = spin_sleep::SpinSleeper::new(100_000)
                         .with_spin_strategy(spin_sleep::SpinStrategy::YieldThread);
@@ -214,7 +185,7 @@ fn main() {
         // spawn source and sink threads
         let cloned_blocked_signal = Arc::clone(&blocked_signal);
         let source = thread::spawn(move || {
-            source_thread(tx, trace, start_offset, throttler, Arc::clone(&blocked_signal))
+            source_thread(tx, trace, start_offset, port, throttler, Arc::clone(&blocked_signal))
         });
         let sink = thread::spawn(move || {
             let addr = format!("{}:{}", target_address, port); 

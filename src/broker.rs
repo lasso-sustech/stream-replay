@@ -2,7 +2,7 @@ use std::thread::{self, JoinHandle, yield_now};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
-use crate::{PacketStruct, PacketSender, PacketReceiver};
+use crate::packet::{PacketStruct, PacketSender, PacketReceiver};
 
 type SourceSink = (PacketSender, PacketReceiver);
 type BrokerConn = (PacketReceiver, PacketSender);
