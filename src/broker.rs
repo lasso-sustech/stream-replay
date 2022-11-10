@@ -2,7 +2,7 @@ use std::thread::{self, JoinHandle, yield_now};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
-use crate::packet::{PacketStruct, PacketSender, PacketReceiver};
+use crate::packet::{PacketStruct, PacketSender, PacketReceiver, tos2ac};
 
 type SourceSink = (PacketSender, PacketReceiver);
 type BrokerConn = (PacketReceiver, PacketSender);
@@ -53,21 +53,8 @@ impl GlobalBroker {
 
         let conn = (broker_rx, broker_tx);
         let app = Application{ conn, priority };
-        
-        //reference: https://wireless.wiki.kernel.org/en/developers/documentation/mac80211/queues
-        let ac_bits = (tos & 0xE0) >> 5;
-        match ac_bits {
-            // AC_BK (AC3)
-            0b001 | 0b010 => { self.apps[3].lock().unwrap().push(app); }
-            // AC_BE (AC2)
-            0b000 | 0b011 => { self.apps[2].lock().unwrap().push(app); }
-            // AC_VI (AC1)
-            0b100 | 0b101 => { self.apps[1].lock().unwrap().push(app); }
-            // AC_VO (AC0)
-            0b110 | 0b111 => { self.apps[0].lock().unwrap().push(app); }
-            // otherwise
-            _ => { panic!("Impossible ToS value.") }
-        }
+        let ac = tos2ac( tos );
+        self.apps[ac].lock().unwrap().push( app );
 
         (tx, rx)
     }

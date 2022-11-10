@@ -31,3 +31,15 @@ impl PacketStruct {
         self.offset -= 1;
     }
 }
+
+//Reference: https://wireless.wiki.kernel.org/en/developers/documentation/mac80211/queues
+pub fn tos2ac(tos: u8) -> usize {
+    let ac_bits = (tos & 0xE0) >> 5;
+    match ac_bits {
+        0b001 | 0b010 => 3, // AC_BK (AC3)
+        0b000 | 0b011 => 2, // AC_BE (AC2)
+        0b100 | 0b101 => 1, // AC_VI (AC1)
+        0b110 | 0b111 => 0, // AC_VO (AC0)
+        _ => { panic!("Impossible ToS value.") }
+    }
+}
