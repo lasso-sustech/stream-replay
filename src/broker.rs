@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 use crate::packet::{PacketStruct, PacketSender, PacketReceiver, tos2ac};
+use crate::dispatcher::{UdpDispatcher, SourceInput};
 
-type SourceSink = (PacketSender, PacketReceiver);
 type BrokerConn = (PacketReceiver, PacketSender);
 struct Application {
     conn: BrokerConn,
@@ -33,30 +33,64 @@ fn policy_priority_fifo(apps: Vec<GuardedApplications>) {
 }
 
 pub struct GlobalBroker {
+    name: Option<String>,
+    pub dispatcher: UdpDispatcher,
     apps: [GuardedApplications; 4]
 }
 
 impl GlobalBroker {
-    pub fn new() -> Self {
+    pub fn new(name:Option<String>) -> Self {
         let apps = [
             Arc::new(Mutex::new( Vec::<Application>::new() )),
             Arc::new(Mutex::new( Vec::<Application>::new() )),
             Arc::new(Mutex::new( Vec::<Application>::new() )),
             Arc::new(Mutex::new( Vec::<Application>::new() ))
         ];
-        Self { apps }
+        let dispatcher = UdpDispatcher::new();
+
+        Self { name, dispatcher, apps }
     }
 
-    pub fn add(&mut self, tos: u8, priority: String) -> SourceSink {
-        let (tx, broker_rx) = mpsc::channel::<PacketStruct>();
-        let (broker_tx, rx) = mpsc::channel::<PacketStruct>();
+    pub fn add(&mut self, ipaddr:String, tos: u8, priority: String) -> SourceInput {
+        match self.name {
+            None => {
+                // let (tx, rx) = mpsc::channel::<PacketStruct>();
+                self.dispatcher.start_new(ipaddr, tos)
+            }
+            Some(_) => {
+                let (tx, broker_rx) = mpsc::channel::<PacketStruct>();
+                let (broker_tx, blocked_signal) = self.dispatcher.start_new(ipaddr, tos);
 
-        let conn = (broker_rx, broker_tx);
-        let app = Application{ conn, priority };
+                let conn = (broker_rx, broker_tx);
+                let app = Application{ conn, priority };
+                let ac = tos2ac( tos );
+                self.apps[ac].lock().unwrap().push( app );
+
+                (tx, blocked_signal)
+            }
+        }
+    }
+
+    pub fn append(&mut self, tos: u8, priority: String) -> SourceInput {
         let ac = tos2ac( tos );
-        self.apps[ac].lock().unwrap().push( app );
+        match self.name {
+            None => {
+                let (tx, blocked_signal) = self.dispatcher.records.get(ac).unwrap();
+                ( tx.clone(), Arc::clone(&blocked_signal) )
+            }
+            Some(_) => {
+                let (tx, broker_rx) = mpsc::channel::<PacketStruct>();
+                let (broker_tx, blocked_signal) = self.dispatcher.records.get(ac).unwrap();
+                let (broker_tx, blocked_signal) = (
+                    broker_tx.clone(), Arc::clone(&blocked_signal) );
 
-        (tx, rx)
+                let conn = (broker_rx, broker_tx);
+                let app = Application{ conn, priority };
+                self.apps[ac].lock().unwrap().push( app );
+
+                (tx, blocked_signal)
+            }
+        }
     }
 
     pub fn start(&self) -> JoinHandle<()> {

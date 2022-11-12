@@ -2,11 +2,10 @@ mod conf;
 mod packet;
 mod throttle;
 mod broker;
+mod dispatcher;
 
 use std::path::Path;
 use std::thread;
-use std::sync::{Arc, Mutex, mpsc};
-use std::net::UdpSocket;
 use std::time::{Duration, SystemTime};
 
 use clap::Parser;
@@ -14,12 +13,12 @@ use serde_json;
 use rand::prelude::*;
 use ndarray::prelude::*;
 use ndarray_npy::read_npy;
-use std::os::unix::io::AsRawFd;
 
 use crate::conf::{Manifest, StreamParam, ConnParams};
 use crate::packet::*;
 use crate::throttle::RateThrottler;
 use crate::broker::GlobalBroker;
+use crate::dispatcher::BlockedSignal;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about=None)]
@@ -30,22 +29,6 @@ struct ProgArgs {
     /// The target server IP address.
     #[clap( value_parser )]
     target_ip_address: String,
-}
-
-type BlockedSignal = Arc<Mutex<bool>>;
-
-unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
-    ::std::slice::from_raw_parts(
-        (p as *const T) as *const u8,
-        ::std::mem::size_of::<T>(),
-    )
-}
-
-unsafe fn set_tos(fd: i32, tos: u8) -> bool {
-    let value = &(tos as i32) as *const libc::c_int as *const libc::c_void;
-    let option_len = std::mem::size_of::<libc::c_int>() as u32;
-    let res = libc::setsockopt(fd, libc::IPPROTO_IP, libc::IP_TOS, value, option_len);
-    res == 0
 }
 
 fn load_trace(param:ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, u8, RateThrottler, String)> {
@@ -111,49 +94,12 @@ fn source_thread(tx:PacketSender, trace:Array2<u64>, start_offset:usize, port:u1
     }
 }
 
-fn sink_thread(rx: PacketReceiver, addr:String, tos:u8, blocked_signal:BlockedSignal) -> Result<(), std::io::Error> {
-    // create UDP socket
-    let sock = UdpSocket::bind("0.0.0.0:0")?;
-    sock.set_nonblocking(true).unwrap();
-    unsafe {
-        let fd = sock.as_raw_fd();
-        assert!( set_tos(fd, tos) );
-    }
-    // connect to server
-    sock.connect(addr)?;
-    
-    loop {
-        // fetch bulky packets
-        let packets:Vec<_> = rx.try_iter().collect();
-        // send bulky packets aware of block status
-        for packet in packets.iter() {
-            let length = packet.length as usize;
-            let buf = unsafe{ any_as_u8_slice(packet) };
-            loop {
-                let mut _signal = blocked_signal.lock().unwrap();
-                match sock.send(&buf[..length]) {
-                    Ok(_len) => {
-                        *_signal = false;
-                        break
-                    }
-                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        *_signal = true;
-                        continue // block occurs
-                    }
-                    Err(e) => panic!("encountered IO error: {e}")
-                }
-            }             
-        }
-    }
-}
-
 fn main() {
     let mut rng = rand::thread_rng();
-    let mut broker = GlobalBroker::new();
-    let _handle = broker.start();
 
     // read the manifest file
     let args = ProgArgs::parse();
+    let ipaddr = args.target_ip_address;
     let file = std::fs::File::open(&args.manifest_file).unwrap();
     let reader = std::io::BufReader::new( file );
 
@@ -165,38 +111,43 @@ fn main() {
     println!("Sliding Window Size: {}.", window_size);
     println!("Orchestrator: {:?}.", orchestrator);
 
+    // start broker
+    let mut broker = GlobalBroker::new( orchestrator );
+    let _handle = broker.start();
+    if let Some(true) = manifest.use_agg_socket {
+        broker.dispatcher.start_agg_sockets( ipaddr.clone() );
+    }
+
     // spawn the thread
     let mut handles:Vec<_> = streams.into_iter().enumerate().map(|(i, param)| {
         let start_offset: usize = rng.gen();
-        let target_address = args.target_ip_address.clone();
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = param;
-
-        // define block signal
-        let blocked_signal:BlockedSignal = Arc::new(Mutex::new(false));
 
         // add to broker
         let (trace, port, tos, throttler, priority) = load_trace(params.clone(), window_size)
                 .expect( &format!("{} loading failed.", param) );
-        let (tx, rx) = match orchestrator {
-            Some(_) => broker.add(tos, priority),
-            None=> mpsc::channel::<PacketStruct>()
+        let (tx, blocked_signal) = match manifest.use_agg_socket {
+            Some(true) => {
+                broker.append(tos, priority)
+            },
+            Some(false) | None => {
+                broker.add(ipaddr.clone(), tos, priority)
+            }
         };
         
         // spawn source and sink threads
-        let cloned_blocked_signal = Arc::clone(&blocked_signal);
+        // let sink = thread::spawn(move || {
+        //     dispatcher(rx, target_address, tos, cloned_blocked_signal)
+        // });
         let source = thread::spawn(move || {
-            source_thread(tx, trace, start_offset, port, throttler, Arc::clone(&blocked_signal))
-        });
-        let sink = thread::spawn(move || {
-            let addr = format!("{}:{}", target_address, port); 
-            sink_thread(rx, addr, tos, cloned_blocked_signal)
+            source_thread(tx, trace, start_offset, port, throttler, blocked_signal)
         });
 
         println!("{}. {} on ...", i+1, param);
-        (source, sink)
+        source
     }).collect();
 
     //TODO: block on the exit of last sink thread
     //wait on the first sink handle (maybe panic)
-    handles.remove( 0 ).1.join().unwrap().unwrap();
+    handles.remove( 0 ).join().unwrap();
 }
