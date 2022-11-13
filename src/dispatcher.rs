@@ -34,7 +34,7 @@ impl UdpDispatcher {
         Self { records, handles }
     }
 
-    pub fn start_new(&mut self, ipaddr:String, tos:u8) -> (PacketSender, BlockedSignal) {
+    pub fn start_new(&mut self, ipaddr:String, tos:u8) -> SourceInput {
         let (tx, rx) = mpsc::channel::<PacketStruct>();
         let blocked_signal:BlockedSignal = Arc::new(Mutex::new(false));
         let cloned_blocked_signal = Arc::clone(&blocked_signal);
@@ -44,7 +44,7 @@ impl UdpDispatcher {
 
         let res = ( tx.clone(), Arc::clone(&cloned_blocked_signal) );
         self.records.push( (tx, cloned_blocked_signal) );
-        self.handles.push(handle);
+        self.handles.push( handle );
 
         res
     }
@@ -52,17 +52,16 @@ impl UdpDispatcher {
     pub fn start_agg_sockets(&mut self, ipaddr:String) {
         let ipaddr_list = std::iter::repeat(ipaddr);
         let tos_list = [200, 150, 100, 50];
-        let records:Vec<_> = std::iter::zip(ipaddr_list, tos_list).map(
+        let _:Vec<_> = std::iter::zip(ipaddr_list, tos_list).map(
             |(ipaddr, tos)| {
                 self.start_new(ipaddr, tos)
             }
-        ).collect();
-        self.records.extend(records);
+        ).collect(); //abandon the cloned response
     }
 
 }
 
-pub fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:BlockedSignal) -> Result<(), std::io::Error> {
+fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:BlockedSignal) -> Result<(), std::io::Error> {
     let sock = UdpSocket::bind("0.0.0.0:0")?;
     sock.set_nonblocking(true).unwrap();
     unsafe {

@@ -123,7 +123,7 @@ fn main() {
         let start_offset: usize = rng.gen();
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = param;
 
-        // add to broker
+        // add to broker, and spawn the corresponding source thread
         let (trace, port, tos, throttler, priority) = load_trace(params.clone(), window_size)
                 .expect( &format!("{} loading failed.", param) );
         let (tx, blocked_signal) = match manifest.use_agg_socket {
@@ -134,11 +134,6 @@ fn main() {
                 broker.add(ipaddr.clone(), tos, priority)
             }
         };
-        
-        // spawn source and sink threads
-        // let sink = thread::spawn(move || {
-        //     dispatcher(rx, target_address, tos, cloned_blocked_signal)
-        // });
         let source = thread::spawn(move || {
             source_thread(tx, trace, start_offset, port, throttler, blocked_signal)
         });
@@ -147,7 +142,7 @@ fn main() {
         source
     }).collect();
 
-    //TODO: block on the exit of last sink thread
-    //wait on the first sink handle (maybe panic)
+    //TODO: block on the exit of last source thread
+    //wait on the first source handle (maybe panic)
     handles.remove( 0 ).join().unwrap();
 }
