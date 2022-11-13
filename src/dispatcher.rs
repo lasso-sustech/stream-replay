@@ -3,7 +3,7 @@ use std::thread::{self, JoinHandle};
 use std::net::UdpSocket;
 use std::os::unix::io::AsRawFd;
 use crate::packet::{PacketSender,PacketReceiver, PacketStruct};
-// pub type GuardedData<T> = Arc<Mutex<T>>;
+
 pub type SourceInput = (PacketSender, BlockedSignal);
 pub type BlockedSignal = Arc<Mutex<bool>>;
 
@@ -56,7 +56,7 @@ impl UdpDispatcher {
             |(ipaddr, tos)| {
                 self.start_new(ipaddr, tos)
             }
-        ).collect(); //abandon the cloned response
+        ).collect(); //discard the cloned responses
     }
 
 }
@@ -72,7 +72,7 @@ fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:B
     loop {
         // fetch bulky packets
         let packets:Vec<_> = rx.try_iter().collect();
-        // send bulky packets aware of block status
+        // send bulky packets aware of blocking status
         for packet in packets.iter() {
             let length = packet.length as usize;
             let buf = unsafe{ any_as_u8_slice(packet) };

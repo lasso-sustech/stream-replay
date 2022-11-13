@@ -105,18 +105,15 @@ fn main() {
 
     let root = Path::new(&args.manifest_file).parent();
     let manifest:Manifest = serde_json::from_reader(reader).unwrap();
-    let streams: Vec<_> = manifest.streams.into_iter().filter_map( |x| x.validate(root) ).collect();
+    let streams:Vec<_> = manifest.streams.into_iter().filter_map( |x| x.validate(root) ).collect();
     let window_size = manifest.window_size;
     let orchestrator = manifest.orchestrator;
     println!("Sliding Window Size: {}.", window_size);
     println!("Orchestrator: {:?}.", orchestrator);
 
     // start broker
-    let mut broker = GlobalBroker::new( orchestrator );
+    let mut broker = GlobalBroker::new( orchestrator, ipaddr, manifest.use_agg_socket );
     let _handle = broker.start();
-    if let Some(true) = manifest.use_agg_socket {
-        broker.dispatcher.start_agg_sockets( ipaddr.clone() );
-    }
 
     // spawn the thread
     let mut handles:Vec<_> = streams.into_iter().enumerate().map(|(i, param)| {
@@ -126,14 +123,7 @@ fn main() {
         // add to broker, and spawn the corresponding source thread
         let (trace, port, tos, throttler, priority) = load_trace(params.clone(), window_size)
                 .expect( &format!("{} loading failed.", param) );
-        let (tx, blocked_signal) = match manifest.use_agg_socket {
-            Some(true) => {
-                broker.append(tos, priority)
-            },
-            Some(false) | None => {
-                broker.add(ipaddr.clone(), tos, priority)
-            }
-        };
+        let (tx, blocked_signal) = broker.add(tos, priority);
         let source = thread::spawn(move || {
             source_thread(tx, trace, start_offset, port, throttler, blocked_signal)
         });
