@@ -56,7 +56,8 @@ impl RateThrottler {
 
     pub fn prepare(&mut self, packets: Vec<PacketStruct>) {
         let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
-        self.logger.write_all( format!("{:.9} {}\n", timestamp, self.buffer.len()).as_bytes() ).unwrap();
+        self.logger.write_all( format!("{:.9} {} {:.6}\n",
+            timestamp, self.buffer.len(), self.current_rate_mbps(None) ).as_bytes() ).unwrap();
         for packet in packets.into_iter() {
             self.buffer.push_back(packet);
         }
@@ -84,7 +85,8 @@ impl RateThrottler {
 
     pub fn consume(&mut self) -> Option<PacketStruct> {
         let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
-        self.logger.write_all( format!("{:.9} {}\n", timestamp, self.buffer.len()).as_bytes() ).unwrap();
+        self.logger.write_all( format!("{:.9} {} {:.6}\n",
+            timestamp, self.buffer.len(), self.current_rate_mbps(None) ).as_bytes() ).unwrap();
         self.buffer.pop_front()
     }
 
