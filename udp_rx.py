@@ -44,7 +44,6 @@ def main(args):
         timestamps = list(zip( *sorted( received_record.items(), key=lambda x:x[0]) ))[1]
         average_delay_ms = np.diff(timestamps).mean() * 1E3
         average_jitter_ms = (np.diff(timestamps) - average_delay_ms).mean()
-        average_jitter_ms = np.diff(timestamps).mean() * 1E3
         print( 'Average Jitter: {:.3f} ms'.format(average_jitter_ms) )
     pass
 
