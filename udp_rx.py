@@ -12,7 +12,7 @@ def main(args):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(('', args.port))
     pong_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    pong_sock.bind(('', args.port+1024))
+    pong_port = args.port + 1024
 
     received_length = 0
     received_record = {}
@@ -24,12 +24,13 @@ def main(args):
     print('started.')
 
     while time.time()-init_time < args.duration:
-        _buffer = sock.recv(10240)
+        _buffer, addr = sock.recvfrom(10240)
         seq, offset = extract(_buffer)
         received_length += len(_buffer)
         ##
         if args.calc_rtt:
-            pong_sock.send(_buffer[0:4])
+            pong_addr = (addr[0], pong_port)
+            pong_sock.sendto(_buffer[0:4], pong_addr)
         ##
         if args.calc_jitter:
             if offset==0: #end of packet

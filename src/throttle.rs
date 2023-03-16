@@ -44,21 +44,22 @@ impl RateThrottler {
         Self{ name, logger, window, buffer, throttle }
     }
 
-    pub fn current_rate_mbps(&self, extra_bytes:Option<usize>) -> f64 {
+    pub fn current_rate_mbps(&self, extra_bytes:Option<usize>) -> Option<f64> {
         let acc_size: usize = self.window.window.iter().map(|&x| x.1).sum();
         let acc_size = acc_size  + extra_bytes.unwrap_or(0);
 
-        let acc_time = SystemTime::now().duration_since( self.window.window.get(0).unwrap().0 ).unwrap();
+        let _last_time = self.window.window.get(0)?.0;
+        let acc_time = SystemTime::now().duration_since( _last_time ).unwrap();
         let acc_time = acc_time.as_nanos();
 
         let average_rate_mbps = 8.0 * (acc_size as f64/1e6) / (acc_time as f64*1e-9);
-        average_rate_mbps
+        Some(average_rate_mbps)
     }
 
     pub fn prepare(&mut self, packets: Vec<PacketStruct>) {
         let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
         self.logger.write_all( format!("{:.9} {} {:.6}\n",
-            timestamp, self.buffer.len(), self.current_rate_mbps(None) ).as_bytes() ).unwrap();
+            timestamp, self.buffer.len(), self.current_rate_mbps(None).unwrap_or(0.0) ).as_bytes() ).unwrap();
         for packet in packets.into_iter() {
             self.buffer.push_back(packet);
         }
@@ -87,7 +88,7 @@ impl RateThrottler {
     pub fn consume(&mut self) -> Option<PacketStruct> {
         let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
         self.logger.write_all( format!("{:.9} {} {:.6}\n",
-            timestamp, self.buffer.len(), self.current_rate_mbps(None) ).as_bytes() ).unwrap();
+            timestamp, self.buffer.len(), self.current_rate_mbps(None).unwrap_or(0.0) ).as_bytes() ).unwrap();
         self.buffer.pop_front()
     }
 
@@ -98,7 +99,7 @@ impl RateThrottler {
         }
 
         let average_rate_mbps = self.current_rate_mbps( Some(size_bytes) );
-        if average_rate_mbps < self.throttle {
+        if average_rate_mbps.unwrap() < self.throttle {
             self.window.push(( SystemTime::now(), size_bytes ));
             false
         }
