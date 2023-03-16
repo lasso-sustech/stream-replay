@@ -1,6 +1,8 @@
 use std::sync::mpsc;
 
-pub const UDP_MAX_LENGTH:usize = 1500 - 20 - 10;
+const IP_HEADER_LENGTH:usize = 20;
+const UDP_HEADER_LENGTH:usize = 10; //FIXME: should be 8
+pub const UDP_MAX_LENGTH:usize = 1500 - IP_HEADER_LENGTH - UDP_HEADER_LENGTH;
 const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - 18;
 
 pub type PacketSender   = mpsc::Sender<PacketStruct>;

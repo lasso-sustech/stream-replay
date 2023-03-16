@@ -20,7 +20,7 @@ fn record_thread(rx: mpsc::Receiver<u32>, records: GuardRttRecords) {
     while let Ok(seq) = rx.recv() {
         let time_now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
         let mut _records = records.lock().unwrap();
-        println!("seq: {}", seq);
+        // println!("seq: {}", seq);
         _records.insert(seq, time_now);
     }
 }
@@ -30,19 +30,20 @@ fn pong_recv_thread(name: String, port: u16, records: GuardRttRecords) {
     let sock = UdpSocket::bind( format!("0.0.0.0:{}", port)).unwrap();
     let mut logger = File::create( format!("data/rtt-{}.txt", name) ).unwrap();
 
-    while let Ok((len, _)) = sock.recv_from(&mut buf) {
-        assert!( len==4 );
+    while let Ok(_) = sock.recv_from(&mut buf) {
         let msg: [u8;4] = buf[..4].try_into().unwrap();
-        let seq = u32::from_be_bytes( msg );
+        let seq = u32::from_le_bytes( msg );
+        let msg: [u8;8] = buf[10..18].try_into().unwrap();
+        let duration = f64::from_le_bytes( msg )
 
         let time_now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
         let last_time = {
             let mut _records = records.lock().unwrap();
             _records.remove(&seq).unwrap()
         };
-        let rtt = (time_now - last_time) / 2.0;
+        let rtt = (time_now - last_time + duration) / 2.0;
         logger.write_all(
-            format!("{} {:.6}", seq, rtt).as_bytes()
+            format!("{} {:.6}\n", seq, rtt).as_bytes()
         ).unwrap();
     }
 }

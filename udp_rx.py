@@ -22,8 +22,8 @@ def main(args):
     received_record = {}
 
     print('waiting ...')
-    _, init_seq, _ = extract( sock.recv(10240) )
-    received_record[init_seq] = time.time()
+    timestamp, init_seq, _ = extract( sock.recv(10240) )
+    received_record[init_seq] = ( timestamp, time.time() )
     init_time = time.time()
     print('started.')
 
@@ -32,15 +32,17 @@ def main(args):
         timestamp, seq, offset = extract(_buffer)
         received_length += len(_buffer)
         ##
-        if args.calc_rtt:
-            pong_addr = (addr[0], pong_port)
-            pong_sock.sendto(_buffer[0:4], pong_addr)
-        ##
         if args.calc_jitter:
             if seq not in received_record:
-                received_record[seq] = timestamp
+                received_record[seq] = ( timestamp, time.time() )
             if offset==0: #end of packet
-                received_record[seq] = time.time() - received_record[seq]
+                if args.calc_rtt:
+                    duration = time.time() - received_record[seq][1]
+                    _buffer = bytearray(_buffer)
+                    _buffer[10:18] = struct.pack('d', duration)
+                    pong_addr = (addr[0], pong_port)
+                    pong_sock.sendto(_buffer, pong_addr)
+                received_record[seq] = time.time() - received_record[seq][0]
         pass
 
     average_throughput_Mbps = (received_length*8/1E6) / args.duration

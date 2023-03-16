@@ -83,6 +83,9 @@ fn source_thread(tx:PacketSender, trace:Array2<u64>, start_offset:usize, port:u1
             packets.push( packet.clone() );
         }
         throttler.prepare( packets );
+        if let Some(ref r_tx) = rtt_tx {
+            r_tx.send(packet.seq).unwrap();
+        }
 
         // 2. send aware of blocked status
         while SystemTime::now() < deadline {
@@ -92,9 +95,6 @@ fn source_thread(tx:PacketSender, trace:Array2<u64>, start_offset:usize, port:u1
                     let time_now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
                     packet.timestamp = time_now;
                     tx.send(packet).unwrap();
-                    if let Some(ref r_tx) = rtt_tx {
-                        r_tx.send(packet.seq).unwrap();
-                    }
                     true
                 }) {
                     Some(_) => continue,
