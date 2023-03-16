@@ -1,7 +1,7 @@
 use std::sync::mpsc;
 
 pub const UDP_MAX_LENGTH:usize = 1500 - 20 - 10;
-const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - 10;
+const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - 18;
 
 pub type PacketSender   = mpsc::Sender<PacketStruct>;
 pub type PacketReceiver = mpsc::Receiver<PacketStruct>;
@@ -20,12 +20,13 @@ pub struct PacketStruct {
     offset: u16,//2 Bytes
     pub length: u16,//2 Bytes
     pub port: u16,//2 Bytes
+    pub timestamp: f64,//8 Bytes
     payload: [u8; MAX_PAYLOAD_LEN]
 }
 
 impl PacketStruct {
     pub fn new(port: u16) -> Self {
-        PacketStruct { seq: 0, offset: 0, length: 0, port, payload: [32u8; MAX_PAYLOAD_LEN] }
+        PacketStruct { seq: 0, offset: 0, length: 0, port, timestamp:0.0, payload: [32u8; MAX_PAYLOAD_LEN] }
     }
     pub fn set_length(&mut self, length: u16) {
         self.length = length;

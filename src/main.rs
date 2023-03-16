@@ -88,7 +88,9 @@ fn source_thread(tx:PacketSender, trace:Array2<u64>, start_offset:usize, port:u1
         while SystemTime::now() < deadline {
             let _signal = blocked_signal.lock().unwrap();
             if !(*_signal) {
-                match throttler.try_consume(|packet| {
+                match throttler.try_consume(|mut packet| {
+                    let time_now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
+                    packet.timestamp = time_now;
                     tx.send(packet).unwrap();
                     if let Some(ref r_tx) = rtt_tx {
                         r_tx.send(packet.seq).unwrap();
