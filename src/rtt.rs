@@ -20,6 +20,7 @@ fn record_thread(rx: mpsc::Receiver<u32>, records: GuardRttRecords) {
     while let Ok(seq) = rx.recv() {
         let time_now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
         let mut _records = records.lock().unwrap();
+        println!("seq: {}", seq);
         _records.insert(seq, time_now);
     }
 }
