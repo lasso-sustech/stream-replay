@@ -2,17 +2,10 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::net::UdpSocket;
 use std::os::unix::io::AsRawFd;
-use crate::packet::{PacketSender,PacketReceiver, PacketStruct};
+use crate::packet::{PacketSender,PacketReceiver, PacketStruct, any_as_u8_slice};
 
 pub type SourceInput = (PacketSender, BlockedSignal);
 pub type BlockedSignal = Arc<Mutex<bool>>;
-
-unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
-    ::std::slice::from_raw_parts(
-        (p as *const T) as *const u8,
-        ::std::mem::size_of::<T>(),
-    )
-}
 
 unsafe fn set_tos(fd: i32, tos: u8) -> bool {
     let value = &(tos as i32) as *const libc::c_int as *const libc::c_void;

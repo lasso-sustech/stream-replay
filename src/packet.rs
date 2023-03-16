@@ -6,10 +6,17 @@ const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - 10;
 pub type PacketSender   = mpsc::Sender<PacketStruct>;
 pub type PacketReceiver = mpsc::Receiver<PacketStruct>;
 
+pub unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
+    ::std::slice::from_raw_parts(
+        (p as *const T) as *const u8,
+        ::std::mem::size_of::<T>(),
+    )
+}
+
 #[repr(C,packed)]
 #[derive(Copy, Clone, Debug)]
 pub struct PacketStruct {
-    seq: u32,//4 Bytes
+    pub seq: u32,//4 Bytes
     offset: u16,//2 Bytes
     pub length: u16,//2 Bytes
     pub port: u16,//2 Bytes

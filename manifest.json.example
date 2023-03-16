@@ -1,0 +1,16 @@
+{
+    "use_agg_socket": false,
+    "orchestrator": "",
+    "window_size": 100,
+
+    "streams":[
+        {
+            "type":"UDP",
+            "npy_file": "data/temp.npy",
+            "port": 12345,
+            "tos": 0,
+            "throttle": 0,
+            "priority": ""
+        }
+    ]
+}

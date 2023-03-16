@@ -8,7 +8,8 @@ pub struct ConnParams {
     pub port: Option<u16>,
     pub tos: Option<u8>,
     pub throttle: Option<f64>,
-    pub priority: Option<String>
+    pub priority: Option<String>,
+    pub calc_rtt: Option<bool>
 }
 
 #[derive(Serialize, Deserialize, Debug)]

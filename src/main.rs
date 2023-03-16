@@ -3,6 +3,7 @@ mod packet;
 mod throttle;
 mod broker;
 mod dispatcher;
+mod rtt;
 
 use std::path::Path;
 use std::thread;
@@ -19,6 +20,7 @@ use crate::packet::*;
 use crate::throttle::RateThrottler;
 use crate::broker::GlobalBroker;
 use crate::dispatcher::BlockedSignal;
+use crate::rtt::RttRecorder;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about=None)]
@@ -31,7 +33,7 @@ struct ProgArgs {
     target_ip_address: String,
 }
 
-fn load_trace(param:ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, u8, RateThrottler, String)> {
+fn load_trace(param:ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, u8, RateThrottler, String, bool)> {
     let trace: Array2<u64> = read_npy(&param.npy_file).ok()?;
     let port = param.port?;
     let tos = param.tos.unwrap_or(0);
@@ -41,15 +43,24 @@ fn load_trace(param:ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, 
     let throttler = RateThrottler::new(_name, throttle, window_size);
     
     let priority = param.priority.unwrap_or( "".into() );
+    let calc_rtt = param.calc_rtt.unwrap_or(false);
 
-    Some((trace, port, tos, throttler, priority))
+    Some((trace, port, tos, throttler, priority, calc_rtt))
 }
 
-fn source_thread(tx:PacketSender, trace:Array2<u64>, start_offset:usize, port:u16, mut throttler:RateThrottler, blocked_signal:BlockedSignal) {
+fn source_thread(tx:PacketSender, trace:Array2<u64>, start_offset:usize, port:u16, mut throttler:RateThrottler, blocked_signal:BlockedSignal, calc_rtt:bool) {
     let mut packet = PacketStruct::new(port);
     let mut idx = start_offset;
     let spin_sleeper = spin_sleep::SpinSleeper::new(100_000)
                         .with_spin_strategy(spin_sleep::SpinStrategy::YieldThread);
+
+    let mut rtt_recorder = RttRecorder::new( &throttler.name, port );
+    let rtt_tx = match calc_rtt {
+        false => None,
+        true => {
+            Some( rtt_recorder.start() )
+        }
+    };
 
     loop {
         idx = (idx + 1) % trace.shape()[0];
@@ -79,6 +90,9 @@ fn source_thread(tx:PacketSender, trace:Array2<u64>, start_offset:usize, port:u1
             if !(*_signal) {
                 match throttler.try_consume(|packet| {
                     tx.send(packet).unwrap();
+                    if let Some(ref r_tx) = rtt_tx {
+                        r_tx.send(packet.seq).unwrap();
+                    }
                     true
                 }) {
                     Some(_) => continue,
@@ -121,18 +135,19 @@ fn main() {
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = param;
 
         // add to broker, and spawn the corresponding source thread
-        let (trace, port, tos, throttler, priority) = load_trace(params.clone(), window_size)
+        let (trace, port, tos, throttler, priority, calc_rtt) = load_trace(params.clone(), window_size)
                 .expect( &format!("{} loading failed.", param) );
         let (tx, blocked_signal) = broker.add(tos, priority);
         let source = thread::spawn(move || {
-            source_thread(tx, trace, start_offset, port, throttler, blocked_signal)
+            source_thread(tx, trace, start_offset, port, throttler, blocked_signal, calc_rtt)
         });
 
         println!("{}. {} on ...", i+1, param);
         source
     }).collect();
 
-    //TODO: block on the exit of last source thread
-    //wait on the first source handle (maybe panic)
-    handles.remove( 0 ).join().unwrap();
+    // block on the exit of last source thread
+    let _:Vec<_> = handles.drain(..).map(|handle|{
+        handle.join().ok();
+    }).collect();
 }

@@ -29,6 +29,7 @@ where T:Sized + Copy
 }
 
 pub struct RateThrottler {
+    pub name: String,
     logger: File,
     window: SlidingWindow<(TIME, SIZE)>,
     buffer: VecDeque<PacketStruct>,
@@ -40,7 +41,7 @@ impl RateThrottler {
         let buffer = VecDeque::new();
         let logger = File::create( format!("data/log-{}.txt", name) ).unwrap();
         let window = SlidingWindow::new(window_size);
-        Self{ logger, window, buffer, throttle }
+        Self{ name, logger, window, buffer, throttle }
     }
 
     pub fn current_rate_mbps(&self, extra_bytes:Option<usize>) -> f64 {
