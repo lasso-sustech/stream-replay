@@ -34,7 +34,7 @@ fn pong_recv_thread(name: String, port: u16, records: GuardRttRecords) {
         let msg: [u8;4] = buf[..4].try_into().unwrap();
         let seq = u32::from_le_bytes( msg );
         let msg: [u8;8] = buf[10..18].try_into().unwrap();
-        let duration = f64::from_le_bytes( msg )
+        let duration = f64::from_le_bytes( msg );
 
         let time_now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
         let last_time = {
