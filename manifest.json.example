@@ -10,7 +10,8 @@
             "port": 12345,
             "tos": 0,
             "throttle": 0,
-            "priority": ""
+            "priority": "",
+            "calc_rtt": true
         }
     ]
 }

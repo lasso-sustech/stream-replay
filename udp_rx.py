@@ -54,7 +54,7 @@ if __name__=='__main__':
     parser.add_argument('--interval', type=float, nargs='?', default=0,
         help='packet send interval, used for delay calculation (unit: ms).')
     parser.add_argument('--calc-jitter', action='store_true')
-    parser.add_argument('--calc_rtt', action='store_true')
+    parser.add_argument('--calc-rtt', action='store_true')
     ##
     args = parser.parse_args()
     main(args)
