@@ -50,7 +50,6 @@ def main(args):
 
     if args.calc_jitter:
         timestamps = list(zip( *sorted( received_record.items(), key=lambda x:x[0]) ))[1][:-1]
-        print(timestamps)
         average_delay_ms = np.diff(timestamps).mean() * 1E3
         average_jitter_ms = average_delay_ms-args.interval if args.interval else average_delay_ms
         print( 'Average Jitter: {:.6f} ms'.format(average_jitter_ms) )
