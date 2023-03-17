@@ -15,7 +15,6 @@ def main(args):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(('', args.port))
     pong_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    # socket.sets
     pong_port = args.port + 1024
 
     received_length = 0
@@ -24,6 +23,7 @@ def main(args):
     print('waiting ...')
     timestamp, init_seq, _ = extract( sock.recv(10240) )
     received_record[init_seq] = ( timestamp, time.time() )
+    sock.settimeout(0.5)
     init_time = time.time()
     print('started.')
 

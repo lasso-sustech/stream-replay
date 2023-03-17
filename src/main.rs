@@ -31,6 +31,9 @@ struct ProgArgs {
     /// The target server IP address.
     #[clap( value_parser )]
     target_ip_address: String,
+    /// The duration of test procedure (unit: seconds).
+    #[clap( value_parser )]
+    duration: f64
 }
 
 fn load_trace(param:ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, u8, RateThrottler, String, bool)> {
@@ -132,7 +135,7 @@ fn main() {
     let _handle = broker.start();
 
     // spawn the thread
-    let mut handles:Vec<_> = streams.into_iter().enumerate().map(|(i, param)| {
+    let _handles:Vec<_> = streams.into_iter().enumerate().map(|(i, param)| {
         let start_offset: usize = rng.gen();
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = param;
 
@@ -149,7 +152,10 @@ fn main() {
     }).collect();
 
     // block on the exit of last source thread
-    let _:Vec<_> = handles.drain(..).map(|handle|{
-        handle.join().ok();
-    }).collect();
+    // let _:Vec<_> = handles.drain(..).map(|handle|{
+    //     handle.join().ok();
+    // }).collect();
+
+    thread::sleep(Duration::from_secs_f64( args.duration ));
+    std::process::exit(0);
 }
