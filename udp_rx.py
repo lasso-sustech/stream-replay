@@ -28,7 +28,10 @@ def main(args):
     print('started.')
 
     while time.time()-init_time < args.duration:
-        _buffer, addr = sock.recvfrom(10240)
+        try:
+            _buffer, addr = sock.recvfrom(10240)
+        except socket.timeout:
+            break
         timestamp, seq, offset = extract(_buffer)
         received_length += len(_buffer)
         ##
