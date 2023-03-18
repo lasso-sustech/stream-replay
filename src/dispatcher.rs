@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::net::UdpSocket;
 use std::os::unix::io::AsRawFd;
-use crate::packet::{PacketSender,PacketReceiver, PacketStruct, any_as_u8_slice};
+use crate::packet::{PacketSender,PacketReceiver, PacketStruct, APP_HEADER_LENGTH, any_as_u8_slice};
 
 pub type SourceInput = (PacketSender, BlockedSignal);
 pub type BlockedSignal = Arc<Mutex<bool>>;
@@ -68,6 +68,7 @@ fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:B
         // send bulky packets aware of blocking status
         for packet in packets.iter() {
             let length = packet.length as usize;
+            let length = std::cmp::max(length, APP_HEADER_LENGTH);
             let buf = unsafe{ any_as_u8_slice(packet) };
             loop {
                 let port = packet.port;

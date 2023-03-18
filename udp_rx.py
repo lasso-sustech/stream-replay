@@ -3,12 +3,11 @@ import argparse
 import socket, time
 import numpy as np
 import struct
+import io
 
 def extract(buffer):
-    seq, offset, length, port, timestamp = struct.unpack(
+    seq, offset, _length, _port, timestamp = struct.unpack(
         '<IHHHd', buffer[:18])
-    # seq = int.from_bytes(buffer[0:4], 'little')
-    # offset = int.from_bytes(buffer[4:6], 'little')
     return (timestamp, seq, offset)
 
 def main(args):
@@ -23,15 +22,16 @@ def main(args):
     print('waiting ...')
     timestamp, init_seq, _ = extract( sock.recv(10240) )
     received_record[init_seq] = ( timestamp, time.time() )
-    sock.settimeout(0.5)
+    sock.setblocking(False)
     init_time = time.time()
     print('started.')
 
     while time.time()-init_time < args.duration:
         try:
             _buffer, addr = sock.recvfrom(10240)
-        except socket.timeout:
-            break
+        except io.BlockingIOError:
+            time.sleep(1E-5)
+            continue
         timestamp, seq, offset = extract(_buffer)
         received_length += len(_buffer)
         ##
