@@ -64,8 +64,6 @@ if __name__=='__main__':
     parser.add_argument('-p', '--port', type=int, help='binding port for receiving.')
     parser.add_argument('-t', '--duration', type=int,
         help='receiving time duration (unit: second).')
-    parser.add_argument('--interval', type=float, nargs='?', default=0,
-        help='packet send interval, used for delay calculation (unit: ms).')
     parser.add_argument('--calc-jitter', action='store_true')
     parser.add_argument('--calc-rtt', action='store_true')
     ##
