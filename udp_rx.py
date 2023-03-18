@@ -52,9 +52,9 @@ def main(args):
     print( 'Average Throughput: {:.3f} Mbps'.format(average_throughput_Mbps) )
 
     if args.calc_jitter:
-        timestamps = list(zip( *sorted( received_record.items(), key=lambda x:x[0]) ))[1][:-1]
-        average_delay_ms = np.diff(timestamps).mean() * 1E3
-        average_jitter_ms = average_delay_ms-args.interval if args.interval else average_delay_ms
+        average_delay_ms = list(zip( *sorted( received_record.items(), key=lambda x:x[0]) ))[1][:-1]
+        average_delay_ms = np.array([ x*1E3 for x in average_delay_ms if type(x)==float ])
+        average_jitter_ms = np.diff(average_delay_ms).mean()
         print( 'Average Jitter: {:.6f} ms'.format(average_jitter_ms) )
     pass
 
