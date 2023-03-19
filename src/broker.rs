@@ -12,7 +12,7 @@ struct Application {
 }
 type GuardedApplications = Arc<Mutex<Vec<Application>>>;
 
-fn policy_priority_fifo(apps: Vec<GuardedApplications>) {
+fn policy_priority_fifo(all_apps: Vec<GuardedApplications>) {
     let passthrough = |app:&Application| {
         let _ = app.priority;
         for packet in app.conn.0.try_iter() {
@@ -27,9 +27,9 @@ fn policy_priority_fifo(apps: Vec<GuardedApplications>) {
     };
 
     loop {
-        for app in apps.iter() {
+        for ac_apps in all_apps.iter() {
             yield_now();
-            app.lock().unwrap().retain(passthrough);
+            ac_apps.lock().unwrap().retain(passthrough);
         }
     }
 }
