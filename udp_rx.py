@@ -20,8 +20,9 @@ def main(args):
     received_record = {}
 
     print('waiting ...')
-    timestamp, init_seq, _ = extract( sock.recv(10240) )
-    received_record[init_seq] = ( timestamp, time.time() )
+    if args.calc_jitter:
+        timestamp, init_seq, _ = extract( sock.recv(10240) )
+        received_record[init_seq] = ( timestamp, time.time() )
     sock.setblocking(False)
     init_time = time.time()
     print('started.')
@@ -32,10 +33,10 @@ def main(args):
         except io.BlockingIOError:
             time.sleep(1E-5)
             continue
-        timestamp, seq, offset = extract(_buffer)
         received_length += len(_buffer)
         ##
         if args.calc_jitter:
+            timestamp, seq, offset = extract(_buffer)
             if seq not in received_record:
                 received_record[seq] = ( timestamp, time.time() )
             if offset==0: #end of packet
