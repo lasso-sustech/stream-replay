@@ -33,15 +33,15 @@ fn pong_recv_thread(name: String, port: u16, records: GuardRttRecords) {
     while let Ok(_) = sock.recv_from(&mut buf) {
         let msg: [u8;4] = buf[..4].try_into().unwrap();
         let seq = u32::from_le_bytes( msg );
-        // let _msg: [u8;8] = buf[10..18].try_into().unwrap();
-        // let _duration = f64::from_le_bytes( _msg );
+        let _msg: [u8;8] = buf[10..18].try_into().unwrap();
+        let _duration = f64::from_le_bytes( _msg );
 
         let time_now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
         if let Some(last_time) = {
             let mut _records = records.lock().unwrap();
             _records.remove(&seq)
         } {
-            let rtt = (time_now - last_time) / 2.0;
+            let rtt = (time_now - last_time + _duration) / 2.0;
             logger.write_all(
                 format!("{} {:.6}\n", seq, rtt).as_bytes()
             ).unwrap();
