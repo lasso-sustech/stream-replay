@@ -30,6 +30,7 @@ fn policy_priority_fifo(all_apps: Vec<GuardedApplications>) {
         for ac_apps in all_apps.iter() {
             yield_now();
             ac_apps.lock().unwrap().retain(passthrough);
+            sleep( Duration::from_micros(10) );
         }
     }
 }
