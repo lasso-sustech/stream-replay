@@ -1,6 +1,6 @@
-use std::thread::{JoinHandle, yield_now};
+use std::thread::{JoinHandle, sleep, yield_now};
 use std::sync::{Arc, Mutex, mpsc};
-// use std::time::Duration;
+use std::time::Duration;
 
 use crate::packet::{PacketStruct, PacketSender, PacketReceiver, tos2ac};
 use crate::dispatcher::{UdpDispatcher, SourceInput};
@@ -20,6 +20,9 @@ fn policy_priority_fifo(apps: Vec<GuardedApplications>) {
                 return false;
             }
         }
+        if app.priority.contains("guarded,") {
+            sleep( Duration::from_micros(10) );
+        }
         true
     };
 
@@ -27,7 +30,6 @@ fn policy_priority_fifo(apps: Vec<GuardedApplications>) {
         for app in apps.iter() {
             yield_now();
             app.lock().unwrap().retain(passthrough);
-            // thread::sleep( Duration::from_micros(10) );
         }
     }
 }
