@@ -37,11 +37,11 @@ pub struct RateThrottler {
 }
 
 impl RateThrottler {
-    pub fn new(name:String, throttle: f64, window_size:usize, logging:bool) -> Self {
+    pub fn new(name:String, throttle: f64, window_size:usize, no_logging:bool) -> Self {
         let buffer = VecDeque::new();
-        let logger = match logging {
-            true => Some(File::create( format!("data/log-{}.txt", name) ).unwrap()),
-            false => None
+        let logger = match no_logging {
+            false => Some(File::create( format!("data/log-{}.txt", name) ).unwrap()),
+            true => None
         };
         let window = SlidingWindow::new(window_size);
         Self{ name, logger, window, buffer, throttle }
