@@ -30,16 +30,19 @@ where T:Sized + Copy
 
 pub struct RateThrottler {
     pub name: String,
-    logger: File,
+    logger: Option<File>,
     window: SlidingWindow<(TIME, SIZE)>,
     buffer: VecDeque<PacketStruct>,
     pub throttle: f64,
 }
 
 impl RateThrottler {
-    pub fn new(name:String, throttle: f64, window_size:usize) -> Self {
+    pub fn new(name:String, throttle: f64, window_size:usize, logging:bool) -> Self {
         let buffer = VecDeque::new();
-        let logger = File::create( format!("data/log-{}.txt", name) ).unwrap();
+        let logger = match logging {
+            true => Some(File::create( format!("data/log-{}.txt", name) ).unwrap()),
+            false => None
+        };
         let window = SlidingWindow::new(window_size);
         Self{ name, logger, window, buffer, throttle }
     }
@@ -58,8 +61,11 @@ impl RateThrottler {
 
     pub fn prepare(&mut self, packets: Vec<PacketStruct>) {
         let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
-        self.logger.write_all( format!("{:.9} {} {:.6}\n",
-            timestamp, self.buffer.len(), self.current_rate_mbps(None).unwrap_or(0.0) ).as_bytes() ).unwrap();
+        let _rate_mbps = self.current_rate_mbps(None).unwrap_or(0.0);
+        if let Some(ref mut logger) = self.logger {
+            logger.write_all( format!("{:.9} {} {:.6}\n",
+            timestamp, self.buffer.len(), _rate_mbps ).as_bytes() ).unwrap();
+        }
         for packet in packets.into_iter() {
             self.buffer.push_back(packet);
         }
@@ -87,8 +93,11 @@ impl RateThrottler {
 
     pub fn consume(&mut self) -> Option<PacketStruct> {
         let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
-        self.logger.write_all( format!("{:.9} {} {:.6}\n",
-            timestamp, self.buffer.len(), self.current_rate_mbps(None).unwrap_or(0.0) ).as_bytes() ).unwrap();
+        let _rate_mbps = self.current_rate_mbps(None).unwrap_or(0.0);
+        if let Some(ref mut logger) = self.logger {
+            logger.write_all( format!("{:.9} {} {:.6}\n",
+            timestamp, self.buffer.len(), _rate_mbps ).as_bytes() ).unwrap();
+        }
         self.buffer.pop_front()
     }
 

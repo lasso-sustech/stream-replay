@@ -20,8 +20,9 @@ def main(args):
     received_record = {}
 
     print('waiting ...')
+    _buf = sock.recv(10240)
     if args.calc_jitter:
-        timestamp, init_seq, _ = extract( sock.recv(10240) )
+        timestamp, init_seq, _ = extract( _buf )
         received_record[init_seq] = ( timestamp, time.time() )
     sock.setblocking(False)
     init_time = time.time()

@@ -9,7 +9,8 @@ pub struct ConnParams {
     pub tos: Option<u8>,
     pub throttle: Option<f64>,
     pub priority: Option<String>,
-    pub calc_rtt: Option<bool>
+    pub calc_rtt: Option<bool>,
+    pub no_logging: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
