@@ -43,7 +43,7 @@ fn load_trace(param:ConnParams, window_size:usize) -> Option<(Array2<u64>, u16, 
 
     let no_logging = param.no_logging.unwrap_or(false);
     let throttle = param.throttle.unwrap_or(0.0);
-    let _name = format!("{}:{}", port, tos);
+    let _name = format!("{}@{}", port, tos);
     let throttler = RateThrottler::new(_name, throttle, window_size, no_logging);
     
     let priority = param.priority.unwrap_or( "".into() );

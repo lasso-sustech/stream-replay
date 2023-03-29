@@ -24,7 +24,7 @@ fn create_udp_socket(tos: u8) -> Option<UdpSocket> {
 }
 
 #[cfg(windows)]
-fn create_udp_socket(sock: &UdpSocket, tos: u8) -> Option<UdpSocket> {
+fn create_udp_socket(_tos: u8) -> Option<UdpSocket> {
     // use std::os::windows::io::AsRawSocket;
     // use core::ffi::c_void;
     // use windows::Win32::Foundation::HANDLE;
@@ -136,7 +136,7 @@ fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:B
         let packets:Vec<_> = rx.try_iter().collect();
         for packet in packets.iter() {
             let port = packet.port;
-            eprintln!("Socket creation failure: {}:{} ({}).", ipaddr, port, tos);
+            eprintln!("Socket creation failure: {}:{}@{}.", ipaddr, port, tos);
             break;
         }
     }
