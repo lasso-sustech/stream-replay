@@ -26,7 +26,7 @@ fn record_thread(rx: mpsc::Receiver<u32>, records: GuardRttRecords) {
 }
 
 fn pong_recv_thread(name: String, port: u16, records: GuardRttRecords) {
-    let mut buf = [0; 128];
+    let mut buf = [0; 2048];
     let sock = UdpSocket::bind( format!("0.0.0.0:{}", port)).unwrap();
     let mut logger = File::create( format!("logs/rtt-{}.txt", name) ).unwrap();
 
