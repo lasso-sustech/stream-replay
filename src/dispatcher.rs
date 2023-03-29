@@ -23,6 +23,7 @@ unsafe fn set_tos(sock: &UdpSocket, tos: u8) -> bool {
     use core::ffi::c_void;
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::Networking::WinSock::SOCKET;
+    use windows::Win32::Foundation::GetLastError;
     use windows::Win32::NetworkManagement::QoS::{QOS_VERSION, QOSCreateHandle, QOSAddSocketToFlow, QOSSetFlow};
     use windows::Win32::NetworkManagement::QoS::{QOS_SET_FLOW, QOSTrafficTypeBestEffort, QOS_NON_ADAPTIVE_FLOW, QOSSetOutgoingDSCPValue};
 
@@ -34,17 +35,17 @@ unsafe fn set_tos(sock: &UdpSocket, tos: u8) -> bool {
     let qos_version = QOS_VERSION{ MajorVersion:1, MinorVersion:0 };
 
     if !QOSCreateHandle(&qos_version as *const _, &mut qos_handle as *mut HANDLE).as_bool() {
-        println!("QOSCreateHandle failed.");
+        eprintln!("QOSCreateHandle failed ({:?}).", GetLastError());
         return false;
     }
 
     if !QOSAddSocketToFlow(qos_handle, raw_sock, None, QOSTrafficTypeBestEffort, QOS_NON_ADAPTIVE_FLOW, &mut flow_id as *mut _ as *mut u32).as_bool() {
-        println!("QOSAddSocketToFlow failed.");
+        eprintln!("QOSAddSocketToFlow failed ({:?}).",  GetLastError());
         return false;
     }
 
     if !QOSSetFlow(qos_handle,flow_id,QOSSetOutgoingDSCPValue as QOS_SET_FLOW,value_size as u32,&dscp_value as *const _ as *const c_void,0,None).as_bool() {
-        println!("QOSSetFlow failed.");
+        eprintln!("QOSSetFlow failed ({:?}).", GetLastError());
         return false;
     }
 
