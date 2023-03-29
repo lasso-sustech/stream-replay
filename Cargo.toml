@@ -17,3 +17,6 @@ features = ["derive"]
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows = "0.46.0"

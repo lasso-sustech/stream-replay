@@ -1,8 +1,6 @@
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::net::UdpSocket;
-#[cfg(unix)]
-use std::os::unix::io::AsRawFd;
 use crate::packet::{PacketSender,PacketReceiver, PacketStruct, APP_HEADER_LENGTH, any_as_u8_slice};
 
 pub type SourceInput = (PacketSender, BlockedSignal);
@@ -10,6 +8,8 @@ pub type BlockedSignal = Arc<Mutex<bool>>;
 
 #[cfg(unix)]
 unsafe fn set_tos(sock: &UdpSocket, tos: u8) -> bool {
+    use std::os::unix::io::AsRawFd;
+
     let fd = sock.as_raw_fd();
     let value = &(tos as i32) as *const libc::c_int as *const libc::c_void;
     let option_len = std::mem::size_of::<libc::c_int>() as u32;
@@ -18,7 +18,36 @@ unsafe fn set_tos(sock: &UdpSocket, tos: u8) -> bool {
 }
 
 #[cfg(windows)]
-unsafe fn set_tos(_sock: &UdpSocket, _tos: u8) -> bool {
+unsafe fn set_tos(sock: &UdpSocket, tos: u8) -> bool {
+    use std::os::windows::io::AsRawSocket;
+    // use core::ffi::c_void;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::Networking::WinSock::SOCKET;
+    use windows::Win32::NetworkManagement::QoS::{QOS_VERSION, QOSCreateHandle, QOSAddSocketToFlow, QOSSetFlow};
+    use windows::Win32::NetworkManagement::QoS::{QOSTrafficTypeBestEffort, QOS_NON_ADAPTIVE_FLOW, QOSSetOutgoingDSCPValue};
+
+    let raw_dock:SOCKET = sock.as_raw_socket();
+    let mut flow_id = 0;
+    let mut qos_handle = Handle(0);
+    let dscp_value = (tos >> 2) as u32; //DSCP value is the high-order 6 bits of the TOS
+    let value_size = std::mem::size_of::<u32>();
+    let qos_version = QOS_VERSION{ MajorVersion:1, MinorVersion:0 };
+
+    if (!QOSCreateHandle(&qos_version as *const _, &qos_handle as *mut _).as_bool()) {
+        println!("QOSCreateHandle failed.");
+        return false;
+    }
+
+    if (!QOSAddSocketToFlow(qos_handle, raw_dock, None, QOSTrafficTypeBestEffort, QOS_NON_ADAPTIVE_FLOW, &flow_id as *mut u32).as_bool()) {
+        println!("QOSAddSocketToFlow failed.");
+        return false;
+    }
+
+    if (!QOSSetFlow(qos_handle,flow_id,QOSSetOutgoingDSCPValue as QOS_SET_FLOW,value_size,&dscp_value as *const _,0,None).as_bool()) {
+        println!("QOSSetFlow failed.");
+        return false;
+    }
+
     true
 }
 
