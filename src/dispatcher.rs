@@ -1,17 +1,25 @@
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::net::UdpSocket;
+#[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 use crate::packet::{PacketSender,PacketReceiver, PacketStruct, APP_HEADER_LENGTH, any_as_u8_slice};
 
 pub type SourceInput = (PacketSender, BlockedSignal);
 pub type BlockedSignal = Arc<Mutex<bool>>;
 
-unsafe fn set_tos(fd: i32, tos: u8) -> bool {
+#[cfg(unix)]
+unsafe fn set_tos(sock: &UdpSocket, tos: u8) -> bool {
+    let fd = sock.as_raw_fd();
     let value = &(tos as i32) as *const libc::c_int as *const libc::c_void;
     let option_len = std::mem::size_of::<libc::c_int>() as u32;
     let res = libc::setsockopt(fd, libc::IPPROTO_IP, libc::IP_TOS, value, option_len);
     res == 0
+}
+
+#[cfg(windows)]
+unsafe fn set_tos(_sock: &UdpSocket, _tos: u8) -> bool {
+    true
 }
 
 pub struct UdpDispatcher {
@@ -57,9 +65,9 @@ impl UdpDispatcher {
 fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:BlockedSignal) -> Result<(), std::io::Error> {
     let sock = UdpSocket::bind("0.0.0.0:0")?;
     sock.set_nonblocking(true).unwrap();
+
     unsafe {
-        let fd = sock.as_raw_fd();
-        assert!( set_tos(fd, tos) );
+        assert!( set_tos(&sock, tos) );
     }
 
     loop {

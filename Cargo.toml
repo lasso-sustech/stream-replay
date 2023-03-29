@@ -10,8 +10,10 @@ ndarray = "0.15"
 ndarray-npy = "0.8"
 clap = { version = "3.2.20", features = ["derive"] }
 spin_sleep = "1.0"
-libc = "0.2"
 
 [dependencies.serde]
 version = "1.0"
 features = ["derive"]
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
