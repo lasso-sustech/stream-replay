@@ -28,14 +28,13 @@ fn record_thread(rx: mpsc::Receiver<u32>, records: GuardRttRecords) {
 fn pong_recv_thread(name: String, port: u16, records: GuardRttRecords) {
     let mut buf = [0; 128];
     let sock = UdpSocket::bind( format!("0.0.0.0:{}", port)).unwrap();
-    let mut logger = File::create( format!("data/rtt-{}.txt", name) ).unwrap();
+    let mut logger = File::create( format!("logs/rtt-{}.txt", name) ).unwrap();
 
     while let Ok(_) = sock.recv_from(&mut buf) {
         let msg: [u8;4] = buf[..4].try_into().unwrap();
         let seq = u32::from_le_bytes( msg );
         let _msg: [u8;8] = buf[10..18].try_into().unwrap();
         let _duration = f64::from_le_bytes( _msg );
-
         let time_now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
         if let Some(last_time) = {
             let mut _records = records.lock().unwrap();

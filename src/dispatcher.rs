@@ -20,30 +20,30 @@ unsafe fn set_tos(sock: &UdpSocket, tos: u8) -> bool {
 #[cfg(windows)]
 unsafe fn set_tos(sock: &UdpSocket, tos: u8) -> bool {
     use std::os::windows::io::AsRawSocket;
-    // use core::ffi::c_void;
+    use core::ffi::c_void;
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::Networking::WinSock::SOCKET;
     use windows::Win32::NetworkManagement::QoS::{QOS_VERSION, QOSCreateHandle, QOSAddSocketToFlow, QOSSetFlow};
-    use windows::Win32::NetworkManagement::QoS::{QOSTrafficTypeBestEffort, QOS_NON_ADAPTIVE_FLOW, QOSSetOutgoingDSCPValue};
+    use windows::Win32::NetworkManagement::QoS::{QOS_SET_FLOW, QOSTrafficTypeBestEffort, QOS_NON_ADAPTIVE_FLOW, QOSSetOutgoingDSCPValue};
 
-    let raw_dock:SOCKET = sock.as_raw_socket();
+    let raw_sock = SOCKET(sock.as_raw_socket() as usize);
     let mut flow_id = 0;
-    let mut qos_handle = Handle(0);
+    let mut qos_handle = HANDLE(0);
     let dscp_value = (tos >> 2) as u32; //DSCP value is the high-order 6 bits of the TOS
     let value_size = std::mem::size_of::<u32>();
     let qos_version = QOS_VERSION{ MajorVersion:1, MinorVersion:0 };
 
-    if (!QOSCreateHandle(&qos_version as *const _, &qos_handle as *mut _).as_bool()) {
+    if !QOSCreateHandle(&qos_version as *const _, &mut qos_handle as *mut HANDLE).as_bool() {
         println!("QOSCreateHandle failed.");
         return false;
     }
 
-    if (!QOSAddSocketToFlow(qos_handle, raw_dock, None, QOSTrafficTypeBestEffort, QOS_NON_ADAPTIVE_FLOW, &flow_id as *mut u32).as_bool()) {
+    if !QOSAddSocketToFlow(qos_handle, raw_sock, None, QOSTrafficTypeBestEffort, QOS_NON_ADAPTIVE_FLOW, &mut flow_id as *mut _ as *mut u32).as_bool() {
         println!("QOSAddSocketToFlow failed.");
         return false;
     }
 
-    if (!QOSSetFlow(qos_handle,flow_id,QOSSetOutgoingDSCPValue as QOS_SET_FLOW,value_size,&dscp_value as *const _,0,None).as_bool()) {
+    if !QOSSetFlow(qos_handle,flow_id,QOSSetOutgoingDSCPValue as QOS_SET_FLOW,value_size as u32,&dscp_value as *const _ as *const c_void,0,None).as_bool() {
         println!("QOSSetFlow failed.");
         return false;
     }
