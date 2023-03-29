@@ -7,54 +7,65 @@ pub type SourceInput = (PacketSender, BlockedSignal);
 pub type BlockedSignal = Arc<Mutex<bool>>;
 
 #[cfg(unix)]
-unsafe fn set_tos(sock: &UdpSocket, tos: u8) -> bool {
+fn create_udp_socket(tos: u8) -> Option<UdpSocket> {
     use std::os::unix::io::AsRawFd;
 
-    let fd = sock.as_raw_fd();
-    let value = &(tos as i32) as *const libc::c_int as *const libc::c_void;
-    let option_len = std::mem::size_of::<libc::c_int>() as u32;
-    let res = libc::setsockopt(fd, libc::IPPROTO_IP, libc::IP_TOS, value, option_len);
-    res == 0
+    let sock = UdpSocket::bind("0.0.0.0:0").ok()?;
+    sock.set_nonblocking(true).unwrap();
+
+    let res = unsafe{
+        let fd = sock.as_raw_fd();
+        let value = &(tos as i32) as *const libc::c_int as *const libc::c_void;
+        let option_len = std::mem::size_of::<libc::c_int>() as u32;
+        libc::setsockopt(fd, libc::IPPROTO_IP, libc::IP_TOS, value, option_len)
+    };
+    
+    if res == 0 { Some(sock) } else { None }
 }
 
 #[cfg(windows)]
-unsafe fn set_tos(sock: &UdpSocket, tos: u8) -> bool {
-    use std::os::windows::io::AsRawSocket;
-    use core::ffi::c_void;
-    use windows::Win32::Foundation::HANDLE;
-    use windows::Win32::Networking::WinSock::SOCKET;
-    use windows::Win32::Foundation::GetLastError;
-    use windows::Win32::NetworkManagement::QoS::{QOS_VERSION, QOSCreateHandle, QOSAddSocketToFlow, QOSSetFlow};
-    use windows::Win32::NetworkManagement::QoS::{QOS_SET_FLOW, QOSTrafficTypeBestEffort, QOS_NON_ADAPTIVE_FLOW, QOSSetOutgoingDSCPValue};
+fn create_udp_socket(sock: &UdpSocket, tos: u8) -> Option<UdpSocket> {
+    // use std::os::windows::io::AsRawSocket;
+    // use core::ffi::c_void;
+    // use windows::Win32::Foundation::HANDLE;
+    // use windows::Win32::Networking::WinSock::SOCKET;
+    // use windows::Win32::Foundation::GetLastError;
+    // use windows::Win32::NetworkManagement::QoS::{QOS_VERSION, QOSCreateHandle, QOSAddSocketToFlow, QOSSetFlow};
+    // use windows::Win32::NetworkManagement::QoS::{QOS_SET_FLOW, QOSTrafficTypeBestEffort, QOS_NON_ADAPTIVE_FLOW, QOSSetOutgoingDSCPValue};
 
-    let raw_sock = SOCKET(sock.as_raw_socket() as usize);
-    let mut flow_id = 0;
-    let mut qos_handle = HANDLE(0);
-    let dscp_value = (tos >> 2) as u32; //DSCP value is the high-order 6 bits of the TOS
-    let value_size = std::mem::size_of::<u32>();
-    let qos_version = QOS_VERSION{ MajorVersion:1, MinorVersion:0 };
+    //FIXME: create WinSock
+    // let raw_sock = SOCKET(sock.as_raw_socket() as usize);
 
-    if !QOSCreateHandle(&qos_version as *const _, &mut qos_handle as *mut HANDLE).as_bool() {
-        eprintln!("QOSCreateHandle failed ({:?}).", GetLastError());
-        return false;
-    }
+    // let mut flow_id = 0;
+    // let mut qos_handle = HANDLE(0);
+    // let dscp_value = (tos >> 2) as u32; //DSCP value is the high-order 6 bits of the TOS
+    // let value_size = std::mem::size_of::<u32>();
+    // let qos_version = QOS_VERSION{ MajorVersion:1, MinorVersion:0 };
 
-    if !QOSAddSocketToFlow(qos_handle, raw_sock, None, QOSTrafficTypeBestEffort, QOS_NON_ADAPTIVE_FLOW, &mut flow_id as *mut _ as *mut u32).as_bool() {
-        eprintln!("QOSAddSocketToFlow failed ({:?}).",  GetLastError());
-        return false;
-    }
+    // if !QOSCreateHandle(&qos_version as *const _, &mut qos_handle as *mut HANDLE).as_bool() {
+    //     eprintln!("QOSCreateHandle failed ({:?}).", GetLastError());
+    //     return None;
+    // }
 
-    if !QOSSetFlow(qos_handle,flow_id,QOSSetOutgoingDSCPValue as QOS_SET_FLOW,value_size as u32,&dscp_value as *const _ as *const c_void,0,None).as_bool() {
-        eprintln!("QOSSetFlow failed ({:?}).", GetLastError());
-        return false;
-    }
+    // if !QOSAddSocketToFlow(qos_handle, raw_sock, None, QOSTrafficTypeBestEffort, QOS_NON_ADAPTIVE_FLOW, &mut flow_id as *mut _ as *mut u32).as_bool() {
+    //     eprintln!("QOSAddSocketToFlow failed ({:?}).",  GetLastError());
+    //     return None;
+    // }
 
-    true
+    // if !QOSSetFlow(qos_handle,flow_id,QOSSetOutgoingDSCPValue as QOS_SET_FLOW,value_size as u32,&dscp_value as *const _ as *const c_void,0,None).as_bool() {
+    //     eprintln!("QOSSetFlow failed ({:?}).", GetLastError());
+    //     return None;
+    // }
+
+    //FIXME: return UdpSocket build from Raw WinSock
+    let sock = UdpSocket::bind("0.0.0.0:0").ok()?;
+    sock.set_nonblocking(true).unwrap();
+    Some(sock)
 }
 
 pub struct UdpDispatcher {
     pub records: Vec<SourceInput>,
-    handles: Vec<JoinHandle<Result<(), std::io::Error>>>
+    handles: Vec<JoinHandle<()>>
 }
 
 impl UdpDispatcher {
@@ -92,38 +103,41 @@ impl UdpDispatcher {
 
 }
 
-fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:BlockedSignal) -> Result<(), std::io::Error> {
-    let sock = UdpSocket::bind("0.0.0.0:0")?;
-    sock.set_nonblocking(true).unwrap();
-
-    unsafe {
-        assert!( set_tos(&sock, tos) );
+fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:BlockedSignal) {
+    if let Some(sock) = create_udp_socket(tos) {
+        loop {
+            // fetch bulky packets
+            let packets:Vec<_> = rx.try_iter().collect();
+            // send bulky packets aware of blocking status
+            for packet in packets.iter() {
+                let length = packet.length as usize;
+                let length = std::cmp::max(length, APP_HEADER_LENGTH);
+                let buf = unsafe{ any_as_u8_slice(packet) };
+                loop {
+                    let port = packet.port;
+                    let addr = format!("{}:{}", ipaddr, port);
+                    let mut _signal = blocked_signal.lock().unwrap();
+                    match sock.send_to(&buf[..length], &addr) {
+                        Ok(_len) => {
+                            *_signal = false;
+                            break
+                        }
+                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            *_signal = true;
+                            continue // block occurs
+                        }
+                        Err(e) => panic!("encountered IO error: {e}")
+                    }
+                }             
+            }
+        }
     }
-
-    loop {
-        // fetch bulky packets
+    else {
         let packets:Vec<_> = rx.try_iter().collect();
-        // send bulky packets aware of blocking status
         for packet in packets.iter() {
-            let length = packet.length as usize;
-            let length = std::cmp::max(length, APP_HEADER_LENGTH);
-            let buf = unsafe{ any_as_u8_slice(packet) };
-            loop {
-                let port = packet.port;
-                let addr = format!("{}:{}", ipaddr, port);
-                let mut _signal = blocked_signal.lock().unwrap();
-                match sock.send_to(&buf[..length], &addr) {
-                    Ok(_len) => {
-                        *_signal = false;
-                        break
-                    }
-                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        *_signal = true;
-                        continue // block occurs
-                    }
-                    Err(e) => panic!("encountered IO error: {e}")
-                }
-            }             
+            let port = packet.port;
+            eprintln!("Socket creation failure: {}:{} ({}).", ipaddr, port, tos);
+            break;
         }
     }
 }
