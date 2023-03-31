@@ -27,7 +27,7 @@ fn create_udp_socket(tos: u8) -> Option<UdpSocket> {
     use std::net::Ipv4Addr;
     use std::os::windows::prelude::FromRawSocket;
     use windows::Win32::Foundation::HANDLE;
-    use windows::Win32::Networking::WinSock::{socket,bind,WSADATA,WSAStartup,AF_INET,SOCK_DGRAM,IPPROTO_UDP, SOCKADDR_IN};
+    use windows::Win32::Networking::WinSock::{WSADATA,WSAStartup,AF_INET,SOCK_DGRAM,SOCKADDR_IN,WSA_FLAG_OVERLAPPED,WSASocketW, WSAConnect};
     use windows::Win32::Foundation::GetLastError;
     use windows::Win32::NetworkManagement::QoS::{QOS_VERSION, QOSCreateHandle, QOSAddSocketToFlow, QOSSetFlow};
     use windows::Win32::NetworkManagement::QoS::{QOS_SET_FLOW, QOSTrafficTypeBestEffort, QOS_NON_ADAPTIVE_FLOW, QOSSetOutgoingDSCPValue};
@@ -57,10 +57,11 @@ fn create_udp_socket(tos: u8) -> Option<UdpSocket> {
         }
 
         // Create socket
-        let local_addr = "0.0.0.0".parse::<Ipv4Addr>().unwrap().into();
-        let raw_sock = socket(AF_INET.0.into(), SOCK_DGRAM.into(), IPPROTO_UDP.0.into());
+        let local_addr = "127.0.0.0".parse::<Ipv4Addr>().unwrap().into(); //FIXME: connect to right remote address
         let local_sockaddr = SOCKADDR_IN{ sin_family:AF_INET, sin_port:0, sin_addr:local_addr, ..Default::default() };
-        bind(raw_sock, &local_sockaddr as *const _ as *const _, std::mem::size_of::<SOCKADDR_IN>() as i32);
+        let raw_sock = WSASocketW(
+            AF_INET.0.into(), SOCK_DGRAM.into(), 0, None, 0, WSA_FLAG_OVERLAPPED);
+        WSAConnect(raw_sock, &local_sockaddr as *const _ as *const _, std::mem::size_of::<SOCKADDR_IN>() as i32, None, None, None, None);
 
         // Setup QoS
         let mut flow_id = 0;
