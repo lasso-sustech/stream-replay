@@ -5,6 +5,8 @@ import numpy as np
 import struct
 import io
 
+REPLAY_MODULE = 'replay'
+
 def extract(buffer):
     seq, offset, _length, _port, timestamp = struct.unpack(
         '<IHHHd', buffer[:18])
@@ -13,8 +15,32 @@ def extract(buffer):
 def main(args):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(('', args.port))
-    pong_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    pong_port = args.port + 1024
+    if args.calc_rtt:
+        import shutil
+        import sys
+        from pathlib import Path
+        ##
+        if Path(f'./target/release/lib{REPLAY_MODULE}.so').exists():
+            _flag = 'release'
+        elif Path(f'./target/debug/lib{REPLAY_MODULE}.so').exists():
+            _flag = 'debug'
+        else:
+            _flag = None
+        if _flag:
+            sys.path.append( (Path.cwd()/'target'/_flag).as_posix() )
+            shutil.copyfile(f'target/{_flag}/lib{REPLAY_MODULE}.so', f'target/{_flag}/{REPLAY_MODULE}.so')
+        ##
+        try:
+            m_replay = __import__(REPLAY_MODULE)
+        except:
+            print('PongSocket: use unix-like socket.')
+            pong_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, args.tos)
+        else:
+            print('PongSocket: use system-dependent socket.')
+            pong_sock = m_replay.PriorityTxSocket( args.tos )
+        ##
+        pong_port = args.port + 1024
 
     received_length = 0
     received_record = {}
@@ -68,6 +94,7 @@ if __name__=='__main__':
         help='receiving time duration (unit: second).')
     parser.add_argument('--calc-jitter', action='store_true')
     parser.add_argument('--calc-rtt', action='store_true')
+    parser.add_argument('--tos', type=int, default=0, help='set ToS for pong socket.')
     ##
     args = parser.parse_args()
     main(args)

@@ -4,6 +4,7 @@ mod throttle;
 mod broker;
 mod dispatcher;
 mod rtt;
+mod socket;
 
 use std::path::Path;
 use std::thread;
