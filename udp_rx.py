@@ -19,16 +19,20 @@ def main(args):
         import shutil
         import sys
         from pathlib import Path
+        import platform
         ##
-        if Path(f'./target/release/lib{REPLAY_MODULE}.so').exists():
-            _flag = 'release'
-        elif Path(f'./target/debug/lib{REPLAY_MODULE}.so').exists():
-            _flag = 'debug'
-        else:
-            _flag = None
-        if _flag:
-            sys.path.append( (Path.cwd()/'target'/_flag).as_posix() )
-            shutil.copyfile(f'target/{_flag}/lib{REPLAY_MODULE}.so', f'target/{_flag}/{REPLAY_MODULE}.so')
+        module_flags = ['release', 'debug']
+        platform_map = {
+            'Linux': (f'lib{REPLAY_MODULE}.so',f'{REPLAY_MODULE}.so'),
+            'Darwin': (f'lib{REPLAY_MODULE}.dylib',f'{REPLAY_MODULE}.so'),
+            'Windows':(f'{REPLAY_MODULE}.dll',f'{REPLAY_MODULE}.pyd') }
+        module_file = platform_map[ platform.system() ]
+        ##
+        for _flag in module_flags:
+            if Path(f'target/{_flag}/{module_file[0]}').exists():
+                sys.path.append( (Path.cwd()/'target'/_flag).as_posix() )
+                shutil.copyfile(f'target/{_flag}/{module_file[0]}', f'target/{_flag}/{module_file[1]}')
+                break
         ##
         try:
             m_replay = __import__(REPLAY_MODULE)
