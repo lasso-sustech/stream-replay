@@ -62,7 +62,6 @@ def main(args):
         try:
             _buffer, addr = sock.recvfrom(10240)
         except io.BlockingIOError:
-            time.sleep(1E-5)
             continue
         received_length += len(_buffer)
         ##
