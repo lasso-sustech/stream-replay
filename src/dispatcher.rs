@@ -36,7 +36,7 @@ impl UdpDispatcher {
 
     pub fn start_agg_sockets(&mut self, ipaddr:String) {
         let ipaddr_list = std::iter::repeat(ipaddr);
-        let tos_list = [200, 150, 100, 50];
+        let tos_list = [192, 128, 96, 32];
         let _:Vec<_> = std::iter::zip(ipaddr_list, tos_list).map(
             |(ipaddr, tos)| {
                 self.start_new(ipaddr, tos)
