@@ -31,7 +31,7 @@ def main(args):
         for _flag in module_flags:
             if Path(f'target/{_flag}/{module_file[0]}').exists():
                 sys.path.append( (Path.cwd()/'target'/_flag).as_posix() )
-                shutil.copyfile(f'target/{_flag}/{module_file[0]}', f'target/{_flag}/{module_file[1]}')
+                shutil.copy2(f'target/{_flag}/{module_file[0]}', f'target/{_flag}/{module_file[1]}')
                 break
         ##
         try:
