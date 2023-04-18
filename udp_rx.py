@@ -4,9 +4,9 @@ import socket, time
 import numpy as np
 import struct
 import io
-import platform
 
 REPLAY_MODULE = 'replay'
+PONG_PORT_INC = 1024
 
 def extract(buffer):
     seq, offset, _length, _port, timestamp = struct.unpack(
@@ -16,7 +16,7 @@ def extract(buffer):
 def main(args):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(('', args.port))
-    if args.calc_rtt and platform.system()=='Windows':
+    if args.calc_rtt:
         import shutil
         import sys
         from pathlib import Path
@@ -36,6 +36,8 @@ def main(args):
                 break
         ##
         try:
+            if platform.system()!='Windows':
+                raise Exception('Bypass other unix-like OS.')
             m_replay = __import__(REPLAY_MODULE)
         except:
             print('PongSocket: use unix-like socket.')
@@ -44,8 +46,7 @@ def main(args):
         else:
             print('PongSocket: use system-dependent socket.')
             pong_sock = m_replay.PriorityTxSocket( args.tos )
-        pass
-    pong_port = args.port + 1024
+        pong_port = args.port + PONG_PORT_INC
 
     received_length = 0
     received_record = {}

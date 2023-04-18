@@ -11,7 +11,8 @@
             "tos": 0,
             "throttle": 0,
             "priority": "",
-            "calc_rtt": true
+            "calc_rtt": true,
+            "no_logging": false
         }
     ]
 }
