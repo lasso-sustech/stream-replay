@@ -4,6 +4,7 @@ import socket, time
 import numpy as np
 import struct
 import io
+import platform
 
 REPLAY_MODULE = 'replay'
 
@@ -15,7 +16,7 @@ def extract(buffer):
 def main(args):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(('', args.port))
-    if args.calc_rtt:
+    if args.calc_rtt and platform.system()=='Windows':
         import shutil
         import sys
         from pathlib import Path
@@ -43,8 +44,8 @@ def main(args):
         else:
             print('PongSocket: use system-dependent socket.')
             pong_sock = m_replay.PriorityTxSocket( args.tos )
-        ##
-        pong_port = args.port + 1024
+        pass
+    pong_port = args.port + 1024
 
     received_length = 0
     received_record = {}
