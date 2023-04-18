@@ -1,7 +1,8 @@
 use std::time::SystemTime;
 use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 use crate::packet::PacketStruct;
-use crate::miscs::{LogProxy, GuardedLogHub};
+use crate::miscs::{LogProxy, GuardedLogHub, RateWatch};
 
 type TIME = SystemTime;
 type SIZE = usize;
@@ -33,10 +34,11 @@ pub struct RateThrottler {
     window: SlidingWindow<(TIME, SIZE)>,
     buffer: VecDeque<PacketStruct>,
     pub throttle: f64,
+    pub rate: Arc<Mutex<f64>>
 }
 
 impl RateThrottler {
-    pub fn new(name:String, throttle: f64, window_size:usize, logger:GuardedLogHub, no_logging:bool) -> Self {
+    pub fn new(name:String, throttle: f64, window_size:usize, logger:GuardedLogHub, no_logging:bool, ref_watch:&mut RateWatch) -> Self {
         let buffer = VecDeque::new();
         let logger = match no_logging {
             false => {
@@ -46,7 +48,11 @@ impl RateThrottler {
             true => None
         };
         let window = SlidingWindow::new(window_size);
-        Self{ name, logger, window, buffer, throttle }
+
+        let rate = Arc::new(Mutex::new( 0.0 ));
+        ref_watch.register(&rate);
+        
+        Self{ name, logger, window, buffer, throttle, rate }
     }
 
     pub fn current_rate_mbps(&self, extra_bytes:Option<usize>) -> Option<f64> {
@@ -97,6 +103,10 @@ impl RateThrottler {
     pub fn consume(&mut self) -> Option<PacketStruct> {
         let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
         let _rate_mbps = self.current_rate_mbps(None).unwrap_or(0.0);
+        self.rate.try_lock().and_then(|mut rate| {
+           *rate = _rate_mbps;
+           Ok(())
+        }).unwrap_or(());
         if let Some(ref mut logger) = self.logger {
             let name = self.name.clone();
             let message = format!("{:.9} {} {:.6}\n", timestamp, self.buffer.len(), _rate_mbps );
