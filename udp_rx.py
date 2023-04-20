@@ -4,16 +4,43 @@ import socket, time
 import numpy as np
 import struct
 import io
+import threading
 
 REPLAY_MODULE = 'replay'
 PONG_PORT_INC = 1024
+
+global received_length,received_record,init_time
+received_length = 0
+received_record = {}
+init_time = None
 
 def extract(buffer):
     seq, offset, _length, _port, timestamp = struct.unpack(
         '<IHHHd', buffer[:18])
     return (timestamp, seq, offset)
 
+def recv_thread(args, sock, pong_port, pong_sock):
+    global received_length,received_record,init_time
+    while True:#time.time()-init_time < args.duration:
+        _buffer, addr = sock.recvfrom(2048)
+        received_length += len(_buffer)
+        ##
+        if args.calc_jitter:
+            timestamp, seq, offset = extract(_buffer)
+            if seq not in received_record:
+                received_record[seq] = ( timestamp, time.time() )
+            if offset==0: #end of packet
+                if args.calc_rtt:
+                    duration = time.time() - received_record[seq][1]
+                    _buffer = bytearray(_buffer)
+                    _buffer[10:18] = struct.pack('d', duration)
+                    pong_addr = (addr[0], pong_port)
+                    pong_sock.sendto(_buffer, pong_addr)
+                received_record[seq] = time.time() - received_record[seq][0]
+        pass
+
 def main(args):
+    global received_length,received_record,init_time
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(('', args.port))
     if args.calc_rtt:
@@ -47,39 +74,21 @@ def main(args):
             print('PongSocket: use system-dependent socket.')
             pong_sock = m_replay.PriorityTxSocket( args.tos )
         pong_port = args.port + PONG_PORT_INC
-
-    received_length = 0
-    received_record = {}
+    else:
+        pong_port = 0
+        pong_sock = None
 
     print('waiting ...')
     _buf = sock.recv(10240)
     if args.calc_jitter:
         timestamp, init_seq, _ = extract( _buf )
         received_record[init_seq] = ( timestamp, time.time() )
-    sock.setblocking(False)
     init_time = time.time()
     print('started.')
 
-    while time.time()-init_time < args.duration:
-        try:
-            _buffer, addr = sock.recvfrom(10240)
-        except io.BlockingIOError:
-            continue
-        received_length += len(_buffer)
-        ##
-        if args.calc_jitter:
-            timestamp, seq, offset = extract(_buffer)
-            if seq not in received_record:
-                received_record[seq] = ( timestamp, time.time() )
-            if offset==0: #end of packet
-                if args.calc_rtt:
-                    duration = time.time() - received_record[seq][1]
-                    _buffer = bytearray(_buffer)
-                    _buffer[10:18] = struct.pack('d', duration)
-                    pong_addr = (addr[0], pong_port)
-                    pong_sock.sendto(_buffer, pong_addr)
-                received_record[seq] = time.time() - received_record[seq][0]
-        pass
+    t = threading.Thread(target=recv_thread, args=(args, sock, pong_port, pong_sock), daemon=True)
+    t.start()
+    time.sleep(args.duration)
 
     average_throughput_Mbps = (received_length*8/1E6) / args.duration
     print( 'Average Throughput: {:.3f} Mbps'.format(average_throughput_Mbps) )
