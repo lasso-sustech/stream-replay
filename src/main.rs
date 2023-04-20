@@ -5,6 +5,7 @@ mod broker;
 mod dispatcher;
 mod rtt;
 mod socket;
+mod miscs;
 
 use std::path::Path;
 use std::thread;
@@ -22,6 +23,7 @@ use crate::throttle::RateThrottler;
 use crate::broker::GlobalBroker;
 use crate::dispatcher::BlockedSignal;
 use crate::rtt::RttRecorder;
+use crate::miscs::RateWatch;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about=None)]
@@ -35,9 +37,12 @@ struct ProgArgs {
     /// The duration of test procedure (unit: seconds).
     #[clap( value_parser )]
     duration: f64,
+    /// Watch the real-time throughput.
+    #[clap(long)]
+    watch: bool
 }
 
-fn load_trace(param:ConnParams, window_size:usize)
+fn load_trace(param:ConnParams, window_size:usize, watch:&mut RateWatch)
             -> Option<(Array2<u64>, u16, u8, RateThrottler, String, bool)> {
     let trace: Array2<u64> = read_npy(&param.npy_file).ok()?;
     let port = param.port?;
@@ -46,7 +51,7 @@ fn load_trace(param:ConnParams, window_size:usize)
     let no_logging = param.no_logging.unwrap_or(false);
     let throttle = param.throttle.unwrap_or(0.0);
     let _name = format!("{}@{}", port, tos);
-    let throttler = RateThrottler::new(_name, throttle, window_size, no_logging);
+    let throttler = RateThrottler::new(_name, throttle, window_size, no_logging, watch);
     
     let priority = param.priority.unwrap_or( "".into() );
     let calc_rtt = param.calc_rtt.unwrap_or(false);
@@ -133,6 +138,12 @@ fn main() {
     println!("Sliding Window Size: {}.", window_size);
     println!("Orchestrator: {:?}.", orchestrator);
 
+    // start ThroughputDisplay thread
+    let mut watch = RateWatch::new();
+    if args.watch {
+        watch.start();
+    }
+
     // start broker
     let mut broker = GlobalBroker::new( orchestrator, ipaddr, manifest.use_agg_socket );
     let _handle = broker.start();
@@ -143,7 +154,7 @@ fn main() {
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = param;
 
         // add to broker, and spawn the corresponding source thread
-        let (trace, port, tos, throttler, priority, calc_rtt) = load_trace(params.clone(), window_size)
+        let (trace, port, tos, throttler, priority, calc_rtt) = load_trace(params.clone(), window_size, &mut watch)
                 .expect( &format!("{} loading failed.", param) );
         let (tx, blocked_signal) = broker.add(tos, priority);
         let source = thread::spawn(move || {
