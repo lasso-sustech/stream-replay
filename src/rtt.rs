@@ -39,7 +39,7 @@ fn pong_recv_thread(name: String, port: u16, records: GuardRttRecords, logger:Lo
             let mut _records = records.lock().unwrap();
             _records.remove(&seq)
         } {
-            let rtt = (time_now - last_time + _duration) / 2.0;
+            let rtt = time_now - last_time;
             let name = name.clone();
             let message = format!("{} {:.6}\n", seq, rtt);
             logger.send(("rtt", name, message)).unwrap();
