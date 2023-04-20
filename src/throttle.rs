@@ -11,7 +11,7 @@ type SIZE = usize;
 
 struct CycledVecDequeue<T> {
     size: usize,
-    pub fifo: VecDeque<T>
+    fifo: VecDeque<T>
 }
 
 impl<T> CycledVecDequeue<T>
@@ -82,7 +82,6 @@ impl RateThrottler {
     }
 
     pub fn current_rate_mbps(&self, extra_bytes:Option<usize>) -> Option<f64> {
-        // let acc_size: usize = self.window.fifo.iter().map(|&x| x.1).sum();
         let acc_size = self.sum_bytes + extra_bytes.unwrap_or(0);
 
         let _last_time = self.window.front()?.0;
