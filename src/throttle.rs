@@ -7,52 +7,64 @@ use crate::packet::PacketStruct;
 type TIME = SystemTime;
 type SIZE = usize;
 
-struct SlidingWindow<T> {
+struct CycledVecDequeue<T> {
     size: usize,
-    pub window: VecDeque<T>
+    pub fifo: VecDeque<T>
 }
 
-impl<T> SlidingWindow<T>
+impl<T> CycledVecDequeue<T>
 where T:Sized + Copy
 {
     pub fn new(size: usize) -> Self {
-        let window = VecDeque::with_capacity(size);
-        Self{ size, window }
+        let fifo = VecDeque::with_capacity(size);
+        Self{ size, fifo }
     }
 
     pub fn push(&mut self, item: T) {
-        if self.window.len()==self.size {
-            self.window.pop_front();
+        if self.fifo.len()==self.size {
+            self.fifo.pop_front();
         }
-        self.window.push_back(item);
+        self.fifo.push_back(item);
+    }
+
+    pub fn len(&self) -> usize {
+        self.fifo.len()
+    }
+
+    pub fn front(&self) -> Option<&T> {
+        self.fifo.front()
+    }
+
+    pub fn pop_front(&mut self) -> Option<T> {
+        self.fifo.pop_front()
     }
 }
 
 pub struct RateThrottler {
     pub name: String,
     logger: Option<File>,
-    window: SlidingWindow<(TIME, SIZE)>,
-    buffer: VecDeque<PacketStruct>,
+    window: CycledVecDequeue<(TIME, SIZE)>,
+    buffer: CycledVecDequeue<PacketStruct>,
     pub throttle: f64,
 }
 
 impl RateThrottler {
     pub fn new(name:String, throttle: f64, window_size:usize, no_logging:bool) -> Self {
-        let buffer = VecDeque::new();
+        let buffer = CycledVecDequeue::new(100 * window_size);
         let logger = match no_logging {
             false => Some(File::create( format!("logs/log-{}.txt", name) ).unwrap()),
             true => None
         };
-        let window = SlidingWindow::new(window_size);
+        let window = CycledVecDequeue::new(window_size);
 
         Self{ name, logger, window, buffer, throttle }
     }
 
     pub fn current_rate_mbps(&self, extra_bytes:Option<usize>) -> Option<f64> {
-        let acc_size: usize = self.window.window.iter().map(|&x| x.1).sum();
+        let acc_size: usize = self.window.fifo.iter().map(|&x| x.1).sum();
         let acc_size = acc_size  + extra_bytes.unwrap_or(0);
 
-        let _last_time = self.window.window.get(0)?.0;
+        let _last_time = self.window.front()?.0;
         let acc_time = SystemTime::now().duration_since( _last_time ).unwrap();
         let acc_time = acc_time.as_nanos();
 
@@ -68,7 +80,7 @@ impl RateThrottler {
             logger.write_all( message.as_bytes() ).unwrap();
         }
         for packet in packets.into_iter() {
-            self.buffer.push_back(packet);
+            self.buffer.push(packet);
         }
     }
 
@@ -103,7 +115,7 @@ impl RateThrottler {
     }
 
     pub fn exceeds_with(&mut self, size_bytes:usize) -> bool {
-        if self.throttle==0.0 || self.window.window.len()==0 {
+        if self.throttle==0.0 || self.window.len()==0 {
             self.window.push(( SystemTime::now(), size_bytes ));
             return false;
         }
