@@ -23,13 +23,10 @@ where T:Sized + Copy
     }
 
     pub fn push(&mut self, item: T) -> Option<T> {
+        self.fifo.push_back(item);
         if self.fifo.len()==self.size {
             self.fifo.pop_front()
-        }
-        else {
-            self.fifo.push_back(item);
-            None
-        }
+        } else{ None }
     }
 
     pub fn try_push(&mut self, item: T) -> bool {
