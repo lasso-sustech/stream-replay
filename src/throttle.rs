@@ -22,11 +22,24 @@ where T:Sized + Copy
         Self{ size, fifo }
     }
 
-    pub fn push(&mut self, item: T) {
+    pub fn push(&mut self, item: T) -> Option<T> {
         if self.fifo.len()==self.size {
-            self.fifo.pop_front();
+            self.fifo.pop_front()
         }
-        self.fifo.push_back(item);
+        else {
+            self.fifo.push_back(item);
+            None
+        }
+    }
+
+    pub fn try_push(&mut self, item: T) -> bool {
+        if self.fifo.len()==self.size {
+            return false;
+        }
+        else {
+            self.fifo.push_back(item);
+            return true;
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -48,6 +61,7 @@ pub struct RateThrottler {
     window: CycledVecDequeue<(TIME, SIZE)>,
     buffer: CycledVecDequeue<PacketStruct>,
     pub throttle: f64,
+    sum_bytes: usize,
     pub rate: Arc<Mutex<f64>>,
 }
 
@@ -62,13 +76,14 @@ impl RateThrottler {
 
         let rate = Arc::new(Mutex::new( 0.0 ));
         ref_watch.register(&rate);
+        let sum_bytes = 0;
 
-        Self{ name, logger, window, buffer, throttle, rate }
+        Self{ name, logger, window, buffer, throttle, rate, sum_bytes }
     }
 
     pub fn current_rate_mbps(&self, extra_bytes:Option<usize>) -> Option<f64> {
-        let acc_size: usize = self.window.fifo.iter().map(|&x| x.1).sum();
-        let acc_size = acc_size  + extra_bytes.unwrap_or(0);
+        // let acc_size: usize = self.window.fifo.iter().map(|&x| x.1).sum();
+        let acc_size = self.sum_bytes + extra_bytes.unwrap_or(0);
 
         let _last_time = self.window.front()?.0;
         let acc_time = SystemTime::now().duration_since( _last_time ).unwrap();
@@ -90,7 +105,7 @@ impl RateThrottler {
             logger.write_all( message.as_bytes() ).unwrap();
         }
         for packet in packets.into_iter() {
-            self.buffer.push(packet);
+            self.buffer.try_push(packet);
         }
     }
 
@@ -126,13 +141,19 @@ impl RateThrottler {
 
     pub fn exceeds_with(&mut self, size_bytes:usize) -> bool {
         if self.throttle==0.0 || self.window.len()==0 {
-            self.window.push(( SystemTime::now(), size_bytes ));
+            self.sum_bytes += size_bytes;
+            if let Some(item) = self.window.push(( SystemTime::now(), size_bytes )) {
+                self.sum_bytes -= item.1 as usize;
+            }
             return false;
         }
 
         let average_rate_mbps = self.current_rate_mbps( Some(size_bytes) );
         if average_rate_mbps.unwrap() < self.throttle {
-            self.window.push(( SystemTime::now(), size_bytes ));
+            self.sum_bytes += size_bytes;
+            if let Some(item) = self.window.push(( SystemTime::now(), size_bytes )) {
+                self.sum_bytes -= item.1 as usize;
+            }
             false
         }
         else {
