@@ -5,12 +5,10 @@ mod broker;
 mod dispatcher;
 mod rtt;
 mod socket;
-mod miscs;
 
 use std::path::Path;
 use std::thread;
 use std::time::{Duration, SystemTime};
-use std::sync::{Arc, Mutex};
 
 use clap::Parser;
 use serde_json;
@@ -24,7 +22,6 @@ use crate::throttle::RateThrottler;
 use crate::broker::GlobalBroker;
 use crate::dispatcher::BlockedSignal;
 use crate::rtt::RttRecorder;
-use crate::miscs::{LoggingHub, GuardedLogHub, RateWatch};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about=None)]
@@ -38,12 +35,9 @@ struct ProgArgs {
     /// The duration of test procedure (unit: seconds).
     #[clap( value_parser )]
     duration: f64,
-    /// Watch the real-time throughput.
-    #[clap(long)]
-    watch: bool
 }
 
-fn load_trace(logger:GuardedLogHub, watch:&mut RateWatch, param:ConnParams, window_size:usize)
+fn load_trace(param:ConnParams, window_size:usize)
             -> Option<(Array2<u64>, u16, u8, RateThrottler, String, bool)> {
     let trace: Array2<u64> = read_npy(&param.npy_file).ok()?;
     let port = param.port?;
@@ -52,7 +46,7 @@ fn load_trace(logger:GuardedLogHub, watch:&mut RateWatch, param:ConnParams, wind
     let no_logging = param.no_logging.unwrap_or(false);
     let throttle = param.throttle.unwrap_or(0.0);
     let _name = format!("{}@{}", port, tos);
-    let throttler = RateThrottler::new(_name, throttle, window_size, logger, no_logging, watch);
+    let throttler = RateThrottler::new(_name, throttle, window_size, no_logging);
     
     let priority = param.priority.unwrap_or( "".into() );
     let calc_rtt = param.calc_rtt.unwrap_or(false);
@@ -60,7 +54,7 @@ fn load_trace(logger:GuardedLogHub, watch:&mut RateWatch, param:ConnParams, wind
     Some((trace, port, tos, throttler, priority, calc_rtt))
 }
 
-fn source_thread(tx:PacketSender, trace:Array2<u64>, start_offset:usize, port:u16, mut throttler:RateThrottler, blocked_signal:BlockedSignal, calc_rtt:bool, logger:GuardedLogHub) {
+fn source_thread(tx:PacketSender, trace:Array2<u64>, start_offset:usize, port:u16, mut throttler:RateThrottler, blocked_signal:BlockedSignal, calc_rtt:bool) {
     let mut packet = PacketStruct::new(port);
     let mut idx = start_offset;
     let spin_sleeper = spin_sleep::SpinSleeper::new(100_000)
@@ -70,7 +64,7 @@ fn source_thread(tx:PacketSender, trace:Array2<u64>, start_offset:usize, port:u1
     let rtt_tx = match calc_rtt {
         false => None,
         true => {
-            Some( rtt_recorder.start(logger) )
+            Some( rtt_recorder.start() )
         }
     };
 
@@ -139,16 +133,6 @@ fn main() {
     println!("Sliding Window Size: {}.", window_size);
     println!("Orchestrator: {:?}.", orchestrator);
 
-    // start LoggingHub thread
-    let logger = Arc::new(Mutex::new( LoggingHub::new() ));
-    logger.lock().unwrap().start();
-
-    // start ThroughputDisplay thread
-    let mut watch = RateWatch::new();
-    if args.watch {
-        watch.start();
-    }
-
     // start broker
     let mut broker = GlobalBroker::new( orchestrator, ipaddr, manifest.use_agg_socket );
     let _handle = broker.start();
@@ -159,12 +143,11 @@ fn main() {
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = param;
 
         // add to broker, and spawn the corresponding source thread
-        let (trace, port, tos, throttler, priority, calc_rtt) = load_trace(logger.clone(), &mut watch, params.clone(), window_size)
+        let (trace, port, tos, throttler, priority, calc_rtt) = load_trace(params.clone(), window_size)
                 .expect( &format!("{} loading failed.", param) );
         let (tx, blocked_signal) = broker.add(tos, priority);
-        let _logger = logger.clone();
         let source = thread::spawn(move || {
-            source_thread(tx, trace, start_offset, port, throttler, blocked_signal, calc_rtt, _logger)
+            source_thread(tx, trace, start_offset, port, throttler, blocked_signal, calc_rtt)
         });
 
         println!("{}. {} on ...", i+1, param);

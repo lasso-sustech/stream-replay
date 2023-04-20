@@ -1,9 +1,10 @@
+use std::fs::File;
+use std::io::prelude::*;
 use std::collections::HashMap;
 use std::net::UdpSocket;
 use std::thread::{self, JoinHandle};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::SystemTime;
-use crate::miscs::{LogProxy,GuardedLogHub};
 
 type RttRecords = HashMap<u32,f64>;
 type GuardRttRecords = Arc<Mutex<RttRecords>>;
@@ -25,9 +26,10 @@ fn record_thread(rx: mpsc::Receiver<u32>, records: GuardRttRecords) {
     }
 }
 
-fn pong_recv_thread(name: String, port: u16, records: GuardRttRecords, logger:LogProxy) {
+fn pong_recv_thread(name: String, port: u16, records: GuardRttRecords) {
     let mut buf = [0; 2048];
     let sock = UdpSocket::bind( format!("0.0.0.0:{}", port)).unwrap();
+    let mut logger = File::create( format!("logs/rtt-{}.txt", name) ).unwrap();
 
     while let Ok(_) = sock.recv_from(&mut buf) {
         let msg: [u8;4] = buf[..4].try_into().unwrap();
@@ -40,9 +42,8 @@ fn pong_recv_thread(name: String, port: u16, records: GuardRttRecords, logger:Lo
             _records.remove(&seq)
         } {
             let rtt = time_now - last_time;
-            let name = name.clone();
             let message = format!("{} {:.6}\n", seq, rtt);
-            logger.send(("rtt", name, message)).unwrap();
+            logger.write_all( message.as_bytes() ).unwrap();
         };
     }
 }
@@ -56,19 +57,17 @@ impl RttRecorder {
         RttRecorder{ name, port, record_handle, recv_handle }
     }
 
-    pub fn start(&mut self, logger:GuardedLogHub) -> mpsc::Sender<u32> {
+    pub fn start(&mut self) -> mpsc::Sender<u32> {
         let (tx, rx) = mpsc::channel::<u32>();
         let (name, port) = (self.name.clone(), self.port);
         let records1: GuardRttRecords = Arc::new(Mutex::new(HashMap::new()));
         let records2 = records1.clone();
-
-        let logger = logger.lock().unwrap().register("rtt", &name);
-
+        
         self.record_handle = Some(
             thread::spawn(move || { record_thread(rx, records1); })
         );
         self.recv_handle = Some(
-            thread::spawn(move || { pong_recv_thread(name, port, records2, logger); } )
+            thread::spawn(move || { pong_recv_thread(name, port, records2); } )
         );
 
         tx
