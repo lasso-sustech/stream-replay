@@ -2,14 +2,15 @@ use std::{fs::File};
 use std::io::prelude::*;
 use std::time::SystemTime;
 use std::collections::VecDeque;
-use crate::packet::PacketStruct;
+use crate::packet::{PacketStruct,UDP_MAX_LENGTH};
 use std::sync::{Arc, Mutex};
 use crate::miscs::RateWatch;
 
 type TIME = SystemTime;
 type SIZE = usize;
 
-static MAX_ERR :usize = 20*1024; //20KB
+static MAX_ERR_RATIO: f64 = 0.02;
+static CYCLED_RATIO: usize = 100;
 
 struct CycledVecDequeue<T> {
     size: usize,
@@ -62,12 +63,13 @@ pub struct RateThrottler {
     pub throttle: f64,
     sum_bytes: usize,
     acc_error: usize,
+    max_error: usize,
     pub last_rate: Arc<Mutex<f64>>,
 }
 
 impl RateThrottler {
     pub fn new(name:String, throttle: f64, window_size:usize, no_logging:bool, ref_watch:&mut RateWatch) -> Self {
-        let buffer = CycledVecDequeue::new(100 * window_size);
+        let buffer = CycledVecDequeue::new(CYCLED_RATIO * window_size);
         let logger = match no_logging {
             false => Some(File::create( format!("logs/log-{}.txt", name) ).unwrap()),
             true => None
@@ -77,12 +79,14 @@ impl RateThrottler {
         let last_rate = Arc::new(Mutex::new( 0.0 ));
         ref_watch.register(&last_rate);
 
+        let max_error = (MAX_ERR_RATIO * window_size as f64) as usize * UDP_MAX_LENGTH;
+
         Self{ name, logger, window, buffer, throttle, last_rate,
-                sum_bytes:0, acc_error:0 }
+                sum_bytes:0, acc_error:0, max_error }
     }
 
     pub fn current_rate_mbps(&mut self, extra_bytes:Option<usize>) -> Option<f64> {
-        if self.acc_error < MAX_ERR {
+        if self.acc_error < self.max_error {
             if let Ok(rate)=self.last_rate.try_lock() { return Some(rate.clone()); }
         } else {
             self.acc_error = 0;
