@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{fs::File};
 use std::io::prelude::*;
 use std::time::SystemTime;
 use std::collections::VecDeque;
@@ -8,6 +8,8 @@ use crate::miscs::RateWatch;
 
 type TIME = SystemTime;
 type SIZE = usize;
+
+static MAX_ERR :usize = 20*1024; //20KB
 
 struct CycledVecDequeue<T> {
     size: usize,
@@ -59,7 +61,8 @@ pub struct RateThrottler {
     buffer: CycledVecDequeue<PacketStruct>,
     pub throttle: f64,
     sum_bytes: usize,
-    pub rate: Arc<Mutex<f64>>,
+    acc_error: usize,
+    pub last_rate: Arc<Mutex<f64>>,
 }
 
 impl RateThrottler {
@@ -71,14 +74,20 @@ impl RateThrottler {
         };
         let window = CycledVecDequeue::new(window_size);
 
-        let rate = Arc::new(Mutex::new( 0.0 ));
-        ref_watch.register(&rate);
-        let sum_bytes = 0;
+        let last_rate = Arc::new(Mutex::new( 0.0 ));
+        ref_watch.register(&last_rate);
 
-        Self{ name, logger, window, buffer, throttle, rate, sum_bytes }
+        Self{ name, logger, window, buffer, throttle, last_rate,
+                sum_bytes:0, acc_error:0 }
     }
 
-    pub fn current_rate_mbps(&self, extra_bytes:Option<usize>) -> Option<f64> {
+    pub fn current_rate_mbps(&mut self, extra_bytes:Option<usize>) -> Option<f64> {
+        if self.acc_error < MAX_ERR {
+            if let Ok(rate)=self.last_rate.try_lock() { return Some(rate.clone()); }
+        } else {
+            self.acc_error = 0;
+        }
+
         let acc_size = self.sum_bytes + extra_bytes.unwrap_or(0);
 
         let _last_time = self.window.front()?.0;
@@ -86,16 +95,15 @@ impl RateThrottler {
         let acc_time = acc_time.as_nanos();
 
         let average_rate_mbps = 8.0 * (acc_size as f64/1e6) / (acc_time as f64*1e-9);
+        if let Ok(mut ref_rate) = self.last_rate.try_lock() {
+            *ref_rate = average_rate_mbps;
+        }
         Some(average_rate_mbps)
     }
 
     pub fn prepare(&mut self, packets: Vec<PacketStruct>) {
         let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
         let _rate_mbps = self.current_rate_mbps(None).unwrap_or(0.0);
-        self.rate.try_lock().and_then(|mut rate| {
-            *rate = _rate_mbps;
-            Ok(())
-         }).unwrap_or(());
         if let Some(ref mut logger) = self.logger {
             let message = format!("{:.9} {} {:.6}\n", timestamp, self.buffer.len(), _rate_mbps );
             logger.write_all( message.as_bytes() ).unwrap();
@@ -140,15 +148,19 @@ impl RateThrottler {
             self.sum_bytes += size_bytes;
             if let Some(item) = self.window.push(( SystemTime::now(), size_bytes )) {
                 self.sum_bytes -= item.1 as usize;
+                self.acc_error += item.1;
             }
             return false;
         }
+
+        self.acc_error += size_bytes;
 
         let average_rate_mbps = self.current_rate_mbps( Some(size_bytes) );
         if average_rate_mbps.unwrap() < self.throttle {
             self.sum_bytes += size_bytes;
             if let Some(item) = self.window.push(( SystemTime::now(), size_bytes )) {
                 self.sum_bytes -= item.1 as usize;
+                self.acc_error += item.1;
             }
             false
         }
