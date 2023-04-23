@@ -1,5 +1,5 @@
 use std::thread::{JoinHandle, sleep, yield_now};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::packet::{PacketStruct, PacketSender, PacketReceiver, tos2ac};
@@ -70,7 +70,7 @@ impl GlobalBroker {
         match self.name {
             None => (broker_tx, blocked_signal),
             Some(_) => {
-                let (tx, broker_rx) = mpsc::channel::<PacketStruct>();
+                let (tx, broker_rx) = crossbeam_channel::unbounded::<PacketStruct>();
 
                 let conn = (broker_rx, broker_tx);
                 let app = Application{ conn, priority };

@@ -1,13 +1,11 @@
-use std::sync::mpsc;
-
 const IP_HEADER_LENGTH:usize = 20;
 const UDP_HEADER_LENGTH:usize = 8;
 pub const APP_HEADER_LENGTH:usize = 18;
 pub const UDP_MAX_LENGTH:usize = 1500 - IP_HEADER_LENGTH - UDP_HEADER_LENGTH;
 const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - APP_HEADER_LENGTH;
 
-pub type PacketSender   = mpsc::Sender<PacketStruct>;
-pub type PacketReceiver = mpsc::Receiver<PacketStruct>;
+pub type PacketSender   = crossbeam_channel::Sender<PacketStruct>;
+pub type PacketReceiver = crossbeam_channel::Receiver<PacketStruct>;
 
 pub unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
     ::std::slice::from_raw_parts(

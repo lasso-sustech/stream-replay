@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::net::ToSocketAddrs;
 use crate::packet::{PacketSender,PacketReceiver, PacketStruct, APP_HEADER_LENGTH, any_as_u8_slice};
@@ -21,7 +21,7 @@ impl UdpDispatcher {
     }
 
     pub fn start_new(&mut self, ipaddr:String, tos:u8) -> SourceInput {
-        let (tx, rx) = mpsc::channel::<PacketStruct>();
+        let (tx, rx) = crossbeam_channel::unbounded::<PacketStruct>();
         let blocked_signal:BlockedSignal = Arc::new(Mutex::new(false));
         let cloned_blocked_signal = Arc::clone(&blocked_signal);
         let handle = thread::spawn(move || {
@@ -55,7 +55,8 @@ fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:B
 
         loop {
             // fetch bulky packets
-            let packets:Vec<_> = rx.try_iter().collect();
+            let mut packets:Vec<PacketStruct> = Vec::with_capacity( rx.len() );
+            packets.extend( rx.try_iter() );
             // send bulky packets aware of blocking status
             for packet in packets.iter() {
                 let length = packet.length as usize;

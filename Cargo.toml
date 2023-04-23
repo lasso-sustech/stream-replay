@@ -19,6 +19,7 @@ ndarray-npy = "0.8"
 clap = { version = "3.2.20", features = ["derive"] }
 spin_sleep = "1.0"
 pyo3 = { version = "0.18.2", features = ["extension-module"] }
+crossbeam-channel = "0.5"
 
 [dependencies.serde]
 version = "1.0"
