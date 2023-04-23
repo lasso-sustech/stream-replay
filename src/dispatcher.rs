@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
+use std::net::ToSocketAddrs;
 use crate::packet::{PacketSender,PacketReceiver, PacketStruct, APP_HEADER_LENGTH, any_as_u8_slice};
 use crate::socket::*;
 
@@ -47,6 +48,8 @@ impl UdpDispatcher {
 }
 
 fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:BlockedSignal) {
+    let mut addr = format!("{}:0", ipaddr).to_socket_addrs().unwrap().next().unwrap();
+
     if let Some(sock) = create_udp_socket(tos) {
         sock.set_nonblocking(true).unwrap();
 
@@ -59,8 +62,7 @@ fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:B
                 let length = std::cmp::max(length, APP_HEADER_LENGTH);
                 let buf = unsafe{ any_as_u8_slice(packet) };
                 loop {
-                    let port = packet.port;
-                    let addr = format!("{}:{}", ipaddr, port);
+                    addr.set_port( packet.port );
                     let mut _signal = blocked_signal.lock().unwrap();
                     match sock.send_to(&buf[..length], &addr) {
                         Ok(_len) => {
