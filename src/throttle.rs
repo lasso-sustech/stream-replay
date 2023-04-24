@@ -9,8 +9,8 @@ use crate::miscs::RateWatch;
 type TIME = SystemTime;
 type SIZE = usize;
 
-static MAX_ERR_RATIO: f64 = 0.02;
-static CYCLED_RATIO: usize = 100;
+static MAX_ERR_RATIO: f64 = 0.01;
+static CYCLED_RATIO: usize = 50;
 
 struct CycledVecDequeue<T> {
     size: usize,
