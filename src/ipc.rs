@@ -38,6 +38,7 @@ impl IPCDaemon {
         while let Ok((_len, src_addr)) = sock.recv_from(&mut buf) {
             let buf_str = std::str::from_utf8(&buf).unwrap();
             let req = serde_json::from_str::<Request>(buf_str).unwrap();
+            
             let res = {
                 let body = match req.cmd.as_str() {
                     "throttle" => {
@@ -50,11 +51,15 @@ impl IPCDaemon {
                     },
                     "statistics" => {
                         Some( self.sources.iter().map(|(_, src)| src.statistics()).collect() )
+                    },
+                    "stop" => {
+                        break
                     }
                     _ => None
                 };
                 Response{ cmd:req.cmd.clone(), body }
             };
+
             let res = serde_json::to_string(&res).unwrap();
             sock.send_to(res.as_bytes(), src_addr).unwrap();
         }
