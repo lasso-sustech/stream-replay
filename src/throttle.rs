@@ -3,8 +3,7 @@ use std::io::prelude::*;
 use std::time::SystemTime;
 use std::collections::VecDeque;
 use crate::packet::{PacketStruct,UDP_MAX_LENGTH};
-use std::sync::{Arc, Mutex};
-use crate::miscs::RateWatch;
+// use std::sync::{Arc, Mutex};
 
 type TIME = SystemTime;
 type SIZE = usize;
@@ -60,34 +59,35 @@ pub struct RateThrottler {
     logger: Option<File>,
     window: CycledVecDequeue<(TIME, SIZE)>,
     buffer: CycledVecDequeue<PacketStruct>,
-    pub throttle: f64,
     sum_bytes: usize,
     acc_error: usize,
     max_error: usize,
-    pub last_rate: Arc<Mutex<f64>>,
+    //
+    pub throttle: f64,
+    pub last_rate:f64,
 }
 
 impl RateThrottler {
-    pub fn new(name:String, throttle: f64, window_size:usize, no_logging:bool, ref_watch:&mut RateWatch) -> Self {
+    pub fn new(name:String, throttle: f64, window_size:usize, no_logging:bool) -> Self {
         let buffer = CycledVecDequeue::new(CYCLED_RATIO * window_size);
         let logger = match no_logging {
             false => Some(File::create( format!("logs/log-{}.txt", name) ).unwrap()),
             true => None
         };
         let window = CycledVecDequeue::new(window_size);
-
-        let last_rate = Arc::new(Mutex::new( 0.0 ));
-        ref_watch.register(&last_rate);
-
         let max_error = (MAX_ERR_RATIO * window_size as f64) as usize * UDP_MAX_LENGTH;
 
-        Self{ name, logger, window, buffer, throttle, last_rate,
+        // let last_rate = Arc::new(Mutex::new( 0.0 ));
+        // let throttle = Arc::new(Mutex::new( throttle ));
+
+        Self{ name, logger, window, buffer, throttle, last_rate:0.0,
                 sum_bytes:0, acc_error:0, max_error }
     }
 
     pub fn current_rate_mbps(&mut self, extra_bytes:Option<usize>) -> Option<f64> {
         if self.acc_error < self.max_error {
-            if let Ok(rate)=self.last_rate.try_lock() { return Some(rate.clone()); }
+            return Some(self.last_rate);
+            // if let Ok(rate)=self.last_rate.try_lock() { return Some(rate.clone()); }
         } else {
             self.acc_error = 0;
         }
@@ -99,9 +99,10 @@ impl RateThrottler {
         let acc_time = acc_time.as_nanos();
 
         let average_rate_mbps = 8.0 * (acc_size as f64/1e6) / (acc_time as f64*1e-9);
-        if let Ok(mut ref_rate) = self.last_rate.try_lock() {
-            *ref_rate = average_rate_mbps;
-        }
+        self.last_rate = average_rate_mbps;
+        // if let Ok(mut ref_rate) = self.last_rate.try_lock() {
+        //     *ref_rate = average_rate_mbps;
+        // }
         Some(average_rate_mbps)
     }
 
@@ -148,7 +149,9 @@ impl RateThrottler {
     }
 
     pub fn exceeds_with(&mut self, size_bytes:usize) -> bool {
-        if self.throttle==0.0 || self.window.len()==0 {
+        let _throttle = self.throttle;//.lock().unwrap().clone();
+
+        if _throttle==0.0 || self.window.len()==0 {
             self.sum_bytes += size_bytes;
             if let Some(item) = self.window.push(( SystemTime::now(), size_bytes )) {
                 self.sum_bytes -= item.1 as usize;
@@ -160,7 +163,7 @@ impl RateThrottler {
         self.acc_error += size_bytes;
 
         let average_rate_mbps = self.current_rate_mbps( Some(size_bytes) );
-        if average_rate_mbps.unwrap() < self.throttle {
+        if average_rate_mbps.unwrap() < _throttle {
             self.sum_bytes += size_bytes;
             if let Some(item) = self.window.push(( SystemTime::now(), size_bytes )) {
                 self.sum_bytes -= item.1 as usize;
