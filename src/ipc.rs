@@ -47,6 +47,10 @@ impl IPCDaemon {
                                 self.sources[name].throttle(*value);
                             }).collect();
                         }
+                        // reset RTT records for all
+                        let _:Vec<_> = self.sources.iter().map(|(_,src)| {
+                            src.reset_rtt_records()
+                        }).collect();
                         None
                     },
                     "statistics" => {

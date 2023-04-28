@@ -116,6 +116,14 @@ impl SourceManager {
         }
     }
 
+    pub fn reset_rtt_records(&self) {
+        if let Some(ref rtt) = self.rtt {
+            if let Ok(mut records) = rtt.rtt_records.lock() {
+                *records = (0, 0.0);
+            }
+        }
+    }
+
     pub fn statistics(&self) -> (String, Statistics) {
         let name = self.name.clone();
         let rtt = {
