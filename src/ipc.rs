@@ -35,8 +35,8 @@ impl IPCDaemon {
         let sock = UdpSocket::bind(&addr).unwrap();
         let mut buf = [0; 2048];
 
-        while let Ok((_len, src_addr)) = sock.recv_from(&mut buf) {
-            let buf_str = std::str::from_utf8(&buf).unwrap();
+        while let Ok((len, src_addr)) = sock.recv_from(&mut buf) {
+            let buf_str = std::str::from_utf8(&buf[..len]).unwrap();
             let req = serde_json::from_str::<Request>(buf_str).unwrap();
             
             let res = {
