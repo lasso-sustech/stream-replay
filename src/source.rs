@@ -124,8 +124,7 @@ impl SourceManager {
         }
     }
 
-    pub fn statistics(&self) -> (String, Statistics) {
-        let name = self.name.clone();
+    pub fn statistics(&self) -> Statistics {
         let rtt = {
             match &self.rtt {
                 None => Some(0.0),
@@ -141,8 +140,7 @@ impl SourceManager {
                 Ok(throttler) => Some(throttler.last_rate)
             }
         };
-        let statistics = Statistics{ rtt, throughput };
-        (name, statistics)
+        Statistics{ rtt, throughput }
     }
 
     pub fn start(&mut self, index:usize) -> JoinHandle<()> {
@@ -157,9 +155,7 @@ impl SourceManager {
         let blocked_signal = Arc::clone(&self.blocked_signal);
 
         let source = thread::spawn(move || {
-            source_thread(
-                throttler, rtt_tx, params,
-                tx, blocked_signal)
+            source_thread(throttler, rtt_tx, params, tx, blocked_signal)
         });
 
         println!("{}. {} on ...", index, self.stream);

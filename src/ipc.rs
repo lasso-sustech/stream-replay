@@ -54,7 +54,7 @@ impl IPCDaemon {
                         None
                     },
                     "statistics" => {
-                        Some( self.sources.iter().map(|(_, src)| src.statistics()).collect() )
+                        Some( self.sources.iter().map(|(name, src)| (name.clone(), src.statistics())).collect() )
                     },
                     "stop" => {
                         break

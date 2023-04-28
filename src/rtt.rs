@@ -19,7 +19,7 @@ pub struct RttRecorder {
     recv_handle: Option<JoinHandle<()>>,
     name: String,
     port: u16,
-    pub rtt_records: Arc<Mutex<(usize, f64)>>
+    pub rtt_records: GuardedRttRecords
 }
 
 fn update_rtt_records(records:&GuardedRttRecords, rtt:f64) {
