@@ -1,23 +1,27 @@
 # TCP/UDP stream replay
 
-### Requirement
+### Requirements
 
-- Linux platform
+- [Rust toolchain](https://www.rust-lang.org/learn/get-started)
 
-- Python 3
-
-- Rust toolchain
-
-### How to use
-
-```bash
-cargo run -- <manifest_file> <target_ip_address>
-```
+- Python3, numpy
 
 ### Features
 
-- Read replay configuration from `manifest.json` file;
+- Replay UDP streams from `*.npy` file.
 
-- Support concurrent TCP/UDP stream replay;
+- Specify streams configuration in `manifest.json` file.
 
-- Easily manipulate data trace with `npy` file.
+- Support IPC for real-time monitor and control.
+
+### How to use
+
+**Tx:**
+```bash
+cargo run -- <manifest_file> <target_ip_address> <duration> [--ipc-port <IPC_PORT>]
+```
+
+**Rx:**
+```bash
+python3 ./udp_rx.py -p <port> -t <duration> [--calc-jitter [--calc-rtt [--tos <TOS>]]]
+```
