@@ -86,6 +86,7 @@ pub struct SourceManager{
     pub name: String,
     stream: StreamParam,
     start_timestamp: SystemTime,
+    stop_timestamp: SystemTime,
     //
     throttler: GuardedThrottler,
     rtt: Option<RttRecorder>,
@@ -109,8 +110,9 @@ impl SourceManager {
         };
 
         let start_timestamp = SystemTime::now();
+        let stop_timestamp = SystemTime::now();
 
-        Self{ name, stream, throttler, rtt, tx, blocked_signal, start_timestamp }
+        Self{ name, stream, throttler, rtt, tx, blocked_signal, start_timestamp, stop_timestamp }
     }
 
     pub fn throttle(&self, throttle:f64) {
@@ -163,7 +165,9 @@ impl SourceManager {
         let tx = self.tx.clone();
         let blocked_signal = Arc::clone(&self.blocked_signal);
 
-        self.start_timestamp = SystemTime::now() + Duration::from_secs_f64(params.duration[0]);
+        let _now = SystemTime::now();
+        self.start_timestamp = _now + Duration::from_secs_f64(params.duration[0]);
+        self.stop_timestamp  = _now + Duration::from_secs_f64(params.duration[1]);
         let source = thread::spawn(move || {
             source_thread(throttler, rtt_tx, params, tx, blocked_signal)
         });
