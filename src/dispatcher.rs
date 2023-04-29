@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::net::ToSocketAddrs;
+use std::time::Duration;
 use crate::packet::{PacketSender,PacketReceiver, PacketStruct, APP_HEADER_LENGTH, any_as_u8_slice};
 use crate::socket::*;
 
@@ -56,6 +57,10 @@ fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:B
         loop {
             // fetch bulky packets
             let packets:Vec<_> = rx.try_iter().collect();
+            if packets.len()==0 {
+                std::thread::sleep( Duration::from_nanos(10_000) );
+                continue;
+            }
             // send bulky packets aware of blocking status
             for packet in packets.iter() {
                 let length = packet.length as usize;
