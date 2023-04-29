@@ -65,8 +65,8 @@ fn main() {
     }).collect();
 
     // start global IPC
-    let ipc = IPCDaemon::new( args.ipc_port, sources );
-    ipc.start();
+    let ipc = IPCDaemon::new( sources, args.ipc_port );
+    ipc.start_loop( args.duration );
 
     std::process::exit(0); //force exit
 }

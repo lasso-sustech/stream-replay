@@ -85,6 +85,7 @@ pub fn source_thread(throttler:GuardedThrottler, rtt_tx: Option<RttSender>,
 pub struct SourceManager{
     pub name: String,
     stream: StreamParam,
+    start_timestamp: SystemTime,
     //
     throttler: GuardedThrottler,
     rtt: Option<RttRecorder>,
@@ -107,7 +108,9 @@ impl SourceManager {
             true => Some( RttRecorder::new( &name, params.port ) )
         };
 
-        Self{ name, stream, throttler, rtt, tx, blocked_signal }
+        let start_timestamp = SystemTime::now();
+
+        Self{ name, stream, throttler, rtt, tx, blocked_signal, start_timestamp }
     }
 
     pub fn throttle(&self, throttle:f64) {
@@ -124,23 +127,29 @@ impl SourceManager {
         }
     }
 
-    pub fn statistics(&self) -> Statistics {
+    pub fn statistics(&self) -> Option<Statistics> {
+        if SystemTime::now() < self.start_timestamp {
+            return None;
+        }
+
         let rtt = {
             match &self.rtt {
                 None => Some(0.0),
                 Some(recorder) => match recorder.rtt_records.lock() {
-                    Err(_) => None,
+                    Err(_) => return None,
                     Ok(val) => Some( val.1/(val.0 as f64) )
                 }
             }
         };
+
         let throughput = {
             match self.throttler.lock() {
-                Err(_) => None,
+                Err(_) => return None,
                 Ok(throttler) => Some(throttler.last_rate)
             }
         };
-        Statistics{ rtt, throughput }
+        
+        Some( Statistics{rtt,throughput} )
     }
 
     pub fn start(&mut self, index:usize) -> JoinHandle<()> {
@@ -154,6 +163,7 @@ impl SourceManager {
         let tx = self.tx.clone();
         let blocked_signal = Arc::clone(&self.blocked_signal);
 
+        self.start_timestamp = SystemTime::now() + Duration::from_secs_f64(params.duration[0]);
         let source = thread::spawn(move || {
             source_thread(throttler, rtt_tx, params, tx, blocked_signal)
         });
