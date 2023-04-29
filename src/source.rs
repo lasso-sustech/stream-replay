@@ -130,7 +130,8 @@ impl SourceManager {
     }
 
     pub fn statistics(&self) -> Option<Statistics> {
-        if SystemTime::now() < self.start_timestamp {
+        let _now = SystemTime::now();
+        if  _now<self.start_timestamp && _now>self.stop_timestamp  {
             return None;
         }
 
