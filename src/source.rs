@@ -139,16 +139,16 @@ impl SourceManager {
         let throughput = {
             match self.throttler.lock() {
                 Err(_) => return None,
-                Ok(throttler) => Some(throttler.last_rate)
+                Ok(throttler) => throttler.last_rate
             }
         };
 
         let rtt = {
             match &self.rtt {
-                None => Some(0.0),
+                None => 0.0,
                 Some(recorder) => match recorder.rtt_records.lock() {
                     Err(_) => return None,
-                    Ok(val) => Some( val.1/(val.0 as f64) )
+                    Ok(val) => val.1/(val.0 as f64)
                 }
             }
         };

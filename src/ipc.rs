@@ -4,8 +4,8 @@ use crate::source::SourceManager;
 
 #[derive(Serialize, Deserialize, Debug,Clone)]
 pub struct Statistics {
-    pub rtt: Option<f64>,
-    pub throughput: Option<f64>,
+    pub rtt: f64,
+    pub throughput: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug,Clone)]
