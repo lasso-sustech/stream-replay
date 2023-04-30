@@ -125,7 +125,10 @@ impl SourceManager {
     pub fn reset_rtt_records(&self) {
         if let Some(ref rtt) = self.rtt {
             if let Ok(mut records) = rtt.rtt_records.lock() {
-                *records = (0, 0.0);
+                if records.0 != 0 {
+                    let last_rtt = records.1 / records.0 as f64;
+                    *records = (1, last_rtt);
+                }
             }
         }
     }
