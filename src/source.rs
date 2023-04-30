@@ -81,8 +81,6 @@ pub fn source_thread(throttler:GuardedThrottler, rtt_tx: Option<RttSender>,
 pub struct SourceManager{
     pub name: String,
     stream: StreamParam,
-    start_timestamp: SystemTime,
-    stop_timestamp: SystemTime,
     //
     throttler: GuardedThrottler,
     rtt: Option<RttRecorder>,
@@ -106,10 +104,7 @@ impl SourceManager {
             true => Some( RttRecorder::new( &name, params.port ) )
         };
 
-        let start_timestamp = SystemTime::now();
-        let stop_timestamp = SystemTime::now();
-
-        Self{ name, stream, throttler, rtt, tx, blocked_signal, start_timestamp, stop_timestamp }
+        Self{ name, stream, throttler, rtt, tx, blocked_signal }
     }
 
     pub fn throttle(&self, throttle:f64) {
@@ -127,10 +122,16 @@ impl SourceManager {
     }
 
     pub fn statistics(&self) -> Option<Statistics> {
-        let _now = SystemTime::now();
-        if  _now<self.start_timestamp || _now>self.stop_timestamp  {
-            return None;
-        }
+        let throughput = {
+            match self.throttler.lock() {
+                Err(_) => return None,
+                Ok(throttler) => {
+                    if throttler.last_rate.is_normal() {
+                        Some(throttler.last_rate)
+                    } else { return None; }
+                }
+            }
+        };
 
         let rtt = {
             match &self.rtt {
@@ -139,13 +140,6 @@ impl SourceManager {
                     Err(_) => return None,
                     Ok(val) => Some( val.1/(val.0 as f64) )
                 }
-            }
-        };
-
-        let throughput = {
-            match self.throttler.lock() {
-                Err(_) => return None,
-                Ok(throttler) => Some(throttler.last_rate)
             }
         };
         
@@ -163,9 +157,6 @@ impl SourceManager {
         let tx = self.tx.pop().unwrap();
         let blocked_signal = Arc::clone(&self.blocked_signal);
 
-        let _now = SystemTime::now();
-        self.start_timestamp = _now + Duration::from_secs_f64(params.duration[0]);
-        self.stop_timestamp  = _now + Duration::from_secs_f64(params.duration[1]);
         let source = thread::spawn(move || {
             source_thread(throttler, rtt_tx, params, tx, blocked_signal)
         });
