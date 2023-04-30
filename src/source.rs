@@ -168,8 +168,8 @@ impl SourceManager {
         let blocked_signal = Arc::clone(&self.blocked_signal);
 
         let _now = SystemTime::now();
-        self.start_timestamp = SystemTime::now() + Duration::from_secs_f64( params.duration[0] );
-        self.stop_timestamp = SystemTime::now() + Duration::from_secs_f64( params.duration[1] );
+        self.start_timestamp = _now + Duration::from_secs_f64( params.duration[0] );
+        self.stop_timestamp = _now + Duration::from_secs_f64( params.duration[1] );
         let source = thread::spawn(move || {
             source_thread(throttler, rtt_tx, params, tx, blocked_signal)
         });
