@@ -14,14 +14,26 @@ received_length = 0
 received_record = {}
 init_time = None
 
+def to_rate(x:str) -> float:
+    if x.endswith('KB'):
+        return float(x.strip('KB')) * 1024
+    elif x.endswith('MB'):
+        return float(x.strip('MB')) * 1024*1024
+    elif x.endswith('B'):
+        return float(x.strip('B'))
+    else:
+        raise argparse.ArgumentTypeError('Rate should ends with [B|KB|MB].')
+
 def extract(buffer):
     seq, offset, _length, _port, timestamp = struct.unpack(
         '<IHHHd', buffer[:18])
     return (timestamp, seq, offset)
 
-def recv_thread(args, sock, pong_port, pong_sock):
+def recv_thread(args, sock, pong_port, pong_sock, trigger):
     global received_length,received_record,init_time
-    while True:#time.time()-init_time < args.duration:
+
+    trigger.acquire() #block until first started
+    while True:
         _buffer, addr = sock.recvfrom(2048)
         received_length += len(_buffer)
         ##
@@ -78,34 +90,54 @@ def main(args):
         pong_port = 0
         pong_sock = None
 
+
     print('waiting ...')
-    _buf = sock.recv(10240)
-    if args.calc_jitter:
-        timestamp, init_seq, _ = extract( _buf )
-        received_record[init_seq] = ( timestamp, time.time() )
-    init_time = time.time()
+    with (trigger := threading.Lock()):
+        t = threading.Thread(target=recv_thread, args=(args, sock, pong_port, pong_sock, trigger), daemon=True)
+        t.start()
+        
+        _buf = sock.recv(10240)
+        if args.calc_jitter:
+            timestamp, init_seq, _ = extract( _buf )
+            received_record[init_seq] = ( timestamp, time.time() )
+        init_time = time.time()
     print('started.')
 
-    t = threading.Thread(target=recv_thread, args=(args, sock, pong_port, pong_sock), daemon=True)
-    t.start()
-    time.sleep(args.duration)
+    # waiting for fixed duration / length
+    if args.duration:
+        time.sleep(args.duration)
+    elif args.length:
+        while received_length < args.length: time.sleep(10E-3)
+    else:
+        raise Exception('Either [--duration] or [--length] should be specified.')
 
-    average_throughput_Mbps = (received_length*8/1E6) / args.duration
-    print( 'Average Throughput: {:.3f} Mbps'.format(average_throughput_Mbps) )
-
+    ## print: completion time
+    if args.length:
+        _duration = time.time() - init_time
+        print(f'Completion Time: {_duration:.3f} s')
+    else:
+        _duration = args.duration
+        print(f'Received Bytes: {received_length/1024/1024:.3f} MB')
+    ## print: average throughput
+    average_throughput_Mbps = (received_length*8/1E6) / _duration
+    print( f'Average Throughput: {average_throughput_Mbps:.3f} Mbps' )
+    ## print: average jitter
     if args.calc_jitter:
         average_delay_ms = list(zip( *sorted( received_record.items(), key=lambda x:x[0]) ))[1][:-1]
         average_delay_ms = np.array([ x*1E3 for x in average_delay_ms if type(x)==float ])
         average_jitter_ms = np.diff(average_delay_ms).mean()
-        print( 'Average Jitter: {:.6f} ms'.format(average_jitter_ms) )
+        print( f'Average Jitter: {average_jitter_ms:.6f} ms' )
     pass
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
     ##
-    parser.add_argument('-p', '--port', type=int, help='binding port for receiving.')
-    parser.add_argument('-t', '--duration', type=int,
-        help='receiving time duration (unit: second).')
+    parser.add_argument('-p', '--port', type=int, required=True, help='binding port for receiving.')
+    ##
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('-t', '--duration', type=int, help='receiving time duration (unit: second).')
+    group.add_argument('-l', '--length', type=to_rate, help='receiving block size (unit: B/KB/MB)')
+    ##
     parser.add_argument('--calc-jitter', action='store_true')
     parser.add_argument('--calc-rtt', action='store_true')
     parser.add_argument('--tos', type=int, default=0, help='set ToS for pong socket.')

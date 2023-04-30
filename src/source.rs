@@ -23,38 +23,48 @@ pub fn source_thread(throttler:GuardedThrottler, rtt_tx: Option<RttSender>,
     let spin_sleeper = spin_sleep::SpinSleeper::new(100_000)
                         .with_spin_strategy(spin_sleep::SpinStrategy::YieldThread);
 
+    let mut loops = 0;
     let mut idx = start_offset;
     let stop_time  = SystemTime::now().checked_add( Duration::from_secs_f64(duration[1]) ).unwrap();
 
     spin_sleeper.sleep( Duration::from_secs_f64(duration[0]) );
     while SystemTime::now() <= stop_time {
-        idx = (idx + 1) % trace.shape()[0];
-        let size_bytes = trace[[idx, 1]] as usize;
-        let interval_ns = trace[[idx, 0]];
-        let deadline = SystemTime::now() + Duration::from_nanos(interval_ns);
+        loops += 1;
 
-        // 1. generate packets
-        let mut packets = Vec::new();
-        let (_num, _remains) = (size_bytes/UDP_MAX_LENGTH, size_bytes%UDP_MAX_LENGTH);
-        template.next_seq(_num, _remains);
-        template.set_length(UDP_MAX_LENGTH as u16);
-        for _ in 0.._num {
-            packets.push( template.clone() );
-            template.next_offset();
-        }
-        if _remains > 0 {
-            template.next_offset();
-            template.set_length(_remains as u16);
-            packets.push( template.clone() );
-        }
+        let deadline = if loops < params.loops {
+            // 0. next iteration
+            idx = (idx + 1) % trace.shape()[0];
+            let size_bytes = trace[[idx, 1]] as usize;
+            let interval_ns = trace[[idx, 0]];
 
-        // 2. append to application-layer queue
-        throttler.lock().unwrap().prepare( packets );
-        // report RTT
-        if let Some(ref r_tx) = rtt_tx {
-            r_tx.send(template.seq).unwrap();
-        }
+            // 1. generate packets
+            let mut packets = Vec::new();
+            let (_num, _remains) = (size_bytes/UDP_MAX_LENGTH, size_bytes%UDP_MAX_LENGTH);
+            template.next_seq(_num, _remains);
+            template.set_length(UDP_MAX_LENGTH as u16);
+            for _ in 0.._num {
+                packets.push( template.clone() );
+                template.next_offset();
+            }
+            if _remains > 0 {
+                template.next_offset();
+                template.set_length(_remains as u16);
+                packets.push( template.clone() );
+            }
 
+            // 2. append to application-layer queue
+            throttler.lock().unwrap().prepare( packets );
+            // report RTT
+            if let Some(ref r_tx) = rtt_tx {
+                r_tx.send(template.seq).unwrap();
+            }
+
+            SystemTime::now() + Duration::from_nanos(interval_ns)
+        }
+        else {
+            stop_time
+        };
+        
         // 3. process queue, aware of blocked status
         while SystemTime::now() < deadline {
             let _signal = blocked_signal.lock().unwrap();
@@ -103,7 +113,7 @@ impl SourceManager {
         let tx = [tx].into();
 
         let throttler = Arc::new(Mutex::new(
-            RateThrottler::new(name.clone(), params.throttle, window_size, params.no_logging)
+            RateThrottler::new(name.clone(), params.throttle, window_size, params.no_logging, params.loops != usize::MAX)
         ));
         let rtt =  match params.calc_rtt {
             false => None,

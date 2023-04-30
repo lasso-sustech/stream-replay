@@ -4,16 +4,19 @@ use rand::distributions::Standard;
 use serde::{Serialize, Deserialize};
 
 const fn _default_duration() -> [f64; 2] { [0.0, f64::MAX] }
+const fn _default_loops() -> usize { usize::MAX }
 fn _random_value<T>() -> T where Standard: Distribution<T> { rand::thread_rng().gen() }
 #[derive(Serialize, Deserialize, Debug,Clone)]
 pub struct ConnParams {
     pub npy_file: String,
-    #[serde(default = "_random_value")]     //default: <random>
-    pub port: u16,                          //
-    #[serde(default = "_default_duration")] //default: [0.0, +inf]
-    pub duration: [f64; 2],                 //
-    #[serde(default = "_random_value")]     //default: <random>
-    pub start_offset: usize,                //
+    #[serde(default = "_random_value")]     //default:
+    pub port: u16,                          //         <random>
+    #[serde(default = "_default_duration")] //default:
+    pub duration: [f64; 2],                 //         [0.0, +inf]
+    #[serde(default = "_random_value")]     //default:
+    pub start_offset: usize,                //         <random>
+    #[serde(default = "_default_loops")]    //default:
+    pub loops: usize,                       //         +inf
     #[serde(default)] pub tos: u8,          //default: 0
     #[serde(default)] pub throttle: f64,    //default: 0.0
     #[serde(default)] pub priority: String, //default: ""
@@ -39,8 +42,8 @@ impl std::fmt::Display for StreamParam {
         let _file:String = _param.npy_file.clone();
 
         write!(f,
-            "{type} {{ port: {port}, tos: {tos}, throttle: {throttle} Mbps, file: \"{file}\" }}",
-            type=_type, port=_param.port, tos=_param.tos, throttle=_param.throttle, file=_file
+            "{type} {{ port: {port}, tos: {tos}, throttle: {throttle} Mbps, file: \"{file}\", loops: {loops} }}",
+            type=_type, port=_param.port, tos=_param.tos, throttle=_param.throttle, loops=_param.loops as isize, file=_file
         )
     }
 }

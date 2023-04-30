@@ -26,13 +26,13 @@ where T:Sized + Copy
 
     pub fn push(&mut self, item: T) -> Option<T> {
         self.fifo.push_back(item);
-        if self.fifo.len()==self.size {
+        if self.size>0 && self.fifo.len()==self.size {
             self.fifo.pop_front()
         } else{ None }
     }
 
     pub fn try_push(&mut self, item: T) -> bool {
-        if self.fifo.len()==self.size {
+        if self.size>0 && self.fifo.len()==self.size {
             return false;
         }
         else {
@@ -54,7 +54,6 @@ where T:Sized + Copy
     }
 
     pub fn reset(&mut self) {
-        self.size = 0;
         self.fifo.clear();
     }
 }
@@ -73,8 +72,11 @@ pub struct RateThrottler {
 }
 
 impl RateThrottler {
-    pub fn new(name:String, throttle: f64, window_size:usize, no_logging:bool) -> Self {
-        let buffer = CycledVecDequeue::new(CYCLED_RATIO * window_size);
+    pub fn new(name:String, throttle: f64, window_size:usize, no_logging:bool, infinite_buffer:bool) -> Self {
+        let buffer = match infinite_buffer {
+            true  => CycledVecDequeue::new(0),
+            false => CycledVecDequeue::new(CYCLED_RATIO * window_size)
+        };
         let logger = match no_logging {
             false => Some(File::create( format!("logs/log-{}.txt", name) ).unwrap()),
             true => None
