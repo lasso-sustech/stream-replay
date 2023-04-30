@@ -32,7 +32,7 @@ impl IPCDaemon {
 
     pub fn start_loop(&self, duration:f64) {
         let deadline = SystemTime::now() + Duration::from_secs_f64(duration);
-        let addr = format!("127.0.0.1:{}", self.ipc_port);
+        let addr = format!("0.0.0.0:{}", self.ipc_port);
         let sock = UdpSocket::bind(&addr).unwrap();
         sock.set_nonblocking(true).unwrap();
         let mut buf = [0; 2048];
