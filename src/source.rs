@@ -85,6 +85,9 @@ pub struct SourceManager{
     pub name: String,
     stream: StreamParam,
     //
+    start_timestamp: SystemTime,
+    stop_timestamp: SystemTime,
+    //
     throttler: GuardedThrottler,
     rtt: Option<RttRecorder>,
     //
@@ -107,7 +110,10 @@ impl SourceManager {
             true => Some( RttRecorder::new( &name, params.port ) )
         };
 
-        Self{ name, stream, throttler, rtt, tx, blocked_signal }
+        let start_timestamp = SystemTime::now();
+        let stop_timestamp = SystemTime::now();
+
+        Self{ name, stream, throttler, rtt, tx, blocked_signal, start_timestamp, stop_timestamp }
     }
 
     pub fn throttle(&self, throttle:f64) {
@@ -125,14 +131,15 @@ impl SourceManager {
     }
 
     pub fn statistics(&self) -> Option<Statistics> {
+        let _now = SystemTime::now();
+        if _now<self.start_timestamp || _now>self.stop_timestamp {
+            return None;
+        }
+
         let throughput = {
             match self.throttler.lock() {
                 Err(_) => return None,
-                Ok(throttler) => {
-                    if throttler.last_rate.is_normal() {
-                        Some(throttler.last_rate)
-                    } else { return None; }
-                }
+                Ok(throttler) => Some(throttler.last_rate)
             }
         };
 
@@ -160,6 +167,9 @@ impl SourceManager {
         let tx = self.tx.pop().unwrap();
         let blocked_signal = Arc::clone(&self.blocked_signal);
 
+        let _now = SystemTime::now();
+        self.start_timestamp = SystemTime::now() + Duration::from_secs_f64( params.duration[0] );
+        self.stop_timestamp = SystemTime::now() + Duration::from_secs_f64( params.duration[1] );
         let source = thread::spawn(move || {
             source_thread(throttler, rtt_tx, params, tx, blocked_signal)
         });
