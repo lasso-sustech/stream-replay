@@ -12,10 +12,6 @@ use crate::rtt::{RttRecorder,RttSender};
 use crate::dispatcher::BlockedSignal;
 use crate::ipc::Statistics;
 
-// rtt_tx, rate_tx, throttle_rx
-// trace, start_offset, duration
-// template, tx, blocked_signal
-
 type GuardedThrottler = Arc<Mutex<RateThrottler>>;
 
 pub fn source_thread(throttler:GuardedThrottler, rtt_tx: Option<RttSender>,
@@ -91,7 +87,7 @@ pub struct SourceManager{
     throttler: GuardedThrottler,
     rtt: Option<RttRecorder>,
     //
-    tx: PacketSender,
+    tx: Vec<PacketSender>,
     blocked_signal: BlockedSignal
 }
 
@@ -100,6 +96,7 @@ impl SourceManager {
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = stream;
         let name = format!("{}@{}", params.port, params.tos);
         let (tx, blocked_signal) = broker.add(params.tos, params.priority.clone());
+        let tx = [tx].into();
 
         let throttler = Arc::new(Mutex::new(
             RateThrottler::new(name.clone(), params.throttle, window_size, params.no_logging)
@@ -163,7 +160,7 @@ impl SourceManager {
         };
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = self.stream;
         let params = params.clone();
-        let tx = self.tx.clone();
+        let tx = self.tx.pop().unwrap();
         let blocked_signal = Arc::clone(&self.blocked_signal);
 
         let _now = SystemTime::now();
