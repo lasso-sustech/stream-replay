@@ -76,6 +76,9 @@ pub fn source_thread(throttler:GuardedThrottler, rtt_tx: Option<RttSender>,
             spin_sleeper.sleep( remaining_time );
         }
     }
+
+    //reset throttler
+    throttler.lock().unwrap().reset();
 }
 
 pub struct SourceManager{

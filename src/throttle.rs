@@ -52,6 +52,11 @@ where T:Sized + Copy
     pub fn pop_front(&mut self) -> Option<T> {
         self.fifo.pop_front()
     }
+
+    pub fn reset(&mut self) {
+        self.size = 0;
+        self.fifo.clear();
+    }
 }
 
 pub struct RateThrottler {
@@ -82,6 +87,13 @@ impl RateThrottler {
 
         Self{ name, logger, window, buffer, throttle, last_rate:0.0,
                 sum_bytes:0, acc_error:0, max_error }
+    }
+
+    pub fn reset(&mut self) {
+        self.last_rate = 0.0;
+        (self.sum_bytes,self.acc_error,self.max_error) = (0,0,0);
+        self.window.reset();
+        self.buffer.reset();
     }
 
     pub fn current_rate_mbps(&mut self, extra_bytes:Option<usize>) -> Option<f64> {
