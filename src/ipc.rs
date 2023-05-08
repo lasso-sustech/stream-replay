@@ -76,7 +76,7 @@ impl IPCDaemon {
                 sock.send_to(res.as_bytes(), src_addr).unwrap();
             }
             else {
-                std::thread::sleep( Duration::from_nanos(1_000_000) );
+                std::thread::sleep( Duration::from_nanos(10_000_000) );
             }
         }
     }
