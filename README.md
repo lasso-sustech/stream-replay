@@ -25,3 +25,9 @@ cargo run -- <manifest_file> <target_ip_address> <duration> [--ipc-port <IPC_POR
 ```bash
 python3 ./udp_rx.py -p <port> -t <duration> [--calc-jitter [--calc-rtt [--tos <TOS>]]]
 ```
+
+### Screenshot
+
+Real-time IPC throttle control of multiple live streams with RTT feedback.
+
+![screenshot](previews/screenshot.png)
