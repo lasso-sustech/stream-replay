@@ -30,32 +30,36 @@ impl IPCDaemon {
         Self{ sources, ipc_port }
     }
 
-    fn handle_request(&self, req:Request) -> Response {
-        Response {
-            cmd: req.cmd.clone(),
-            body: match req.cmd.as_str() {
-                "throttle" => {
-                    if let Some(data) = req.body {
-                        let _:Vec<_> = data.iter().map(|(name, value)| {
-                            self.sources[name].throttle(*value);
-                        }).collect();
-                    }
-                    // reset RTT records for all
-                    let _:Vec<_> = self.sources.iter().map(|(_,src)| {
-                        src.reset_rtt_records()
+    fn handle_request(&self, req:Request) -> Option<Response> {
+        let cmd = req.cmd.clone();
+
+        match req.cmd.as_str() {
+            "throttle" => {
+                if let Some(data) = req.body {
+                    let _:Vec<_> = data.iter().map(|(name, value)| {
+                        self.sources[name].throttle(*value);
                     }).collect();
-                    None
-                },
-                "statistics" => {
-                    Some( self.sources.iter().filter_map(|(name,src)| {
-                        match src.statistics() {
-                            Some(stat) => Some(( name.clone(), stat )),
-                            None => None
-                        }
-                    }).collect() )
-                },
-                _ => None
-            }
+                }
+                // reset RTT records for all
+                let _:Vec<_> = self.sources.iter().map(|(_,src)| {
+                    src.reset_rtt_records()
+                }).collect();
+                //
+                return None;
+            },
+
+            "statistics" => {
+                let body = Some( self.sources.iter().filter_map(|(name,src)| {
+                    match src.statistics() {
+                        Some(stat) => Some(( name.clone(), stat )),
+                        None => None
+                    }
+                }).collect() );
+                //
+                return Some(Response{ cmd, body });
+            },
+
+            _ => { return None; }
         }
     }
 
@@ -70,9 +74,10 @@ impl IPCDaemon {
             if let Ok((len, src_addr)) = sock.recv_from(&mut buf) {
                 let buf_str = std::str::from_utf8(&buf[..len]).unwrap();
                 let req = serde_json::from_str::<Request>(buf_str).unwrap();
-                let res = self.handle_request(req);
-                let res = serde_json::to_string(&res).unwrap();
-                sock.send_to(res.as_bytes(), src_addr).unwrap();
+                if let Some(res) = self.handle_request(req) {
+                    let res = serde_json::to_string(&res).unwrap();
+                    sock.send_to(res.as_bytes(), src_addr).unwrap();
+                }
             }
             std::thread::sleep( Duration::from_nanos(10_000_000) );
         }
