@@ -21,12 +21,12 @@ impl UdpDispatcher {
         Self { records, handles }
     }
 
-    pub fn start_new(&mut self, ipaddr:String, tos:u8) -> SourceInput {
+    pub fn start_new(&mut self, ipaddr:String, tos:u8, tx_ipaddr: String) -> SourceInput {
         let (tx, rx) = mpsc::channel::<PacketStruct>();
         let blocked_signal:BlockedSignal = Arc::new(Mutex::new(false));
         let cloned_blocked_signal = Arc::clone(&blocked_signal);
         let handle = thread::spawn(move || {
-            dispatcher_thread(rx, ipaddr, tos, blocked_signal)
+            dispatcher_thread(rx, ipaddr, tos, blocked_signal, tx_ipaddr)
         });
 
         let res = ( tx.clone(), Arc::clone(&cloned_blocked_signal) );
@@ -36,22 +36,22 @@ impl UdpDispatcher {
         res
     }
 
-    pub fn start_agg_sockets(&mut self, ipaddr:String) {
+    pub fn start_agg_sockets(&mut self, ipaddr:String, tx_ipaddr:String) {
         let ipaddr_list = std::iter::repeat(ipaddr);
         let tos_list = [192, 128, 96, 32];
         let _:Vec<_> = std::iter::zip(ipaddr_list, tos_list).map(
             |(ipaddr, tos)| {
-                self.start_new(ipaddr, tos)
+                self.start_new(ipaddr, tos, tx_ipaddr.clone())
             }
         ).collect(); //discard the cloned responses
     }
 
 }
 
-fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:BlockedSignal) {
+fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:BlockedSignal, tx_ipaddr:String) {
     let mut addr = format!("{}:0", ipaddr).to_socket_addrs().unwrap().next().unwrap();
 
-    if let Some(sock) = create_udp_socket(tos) {
+    if let Some(sock) = create_udp_socket(tos, tx_ipaddr) {
         sock.set_nonblocking(true).unwrap();
 
         loop {

@@ -38,13 +38,14 @@ fn policy_priority_fifo(all_apps: Vec<GuardedApplications>) {
 pub struct GlobalBroker {
     name: Option<String>,
     ipaddr: String,
+    tx_ipaddr: String,
     use_agg_socket: Option<bool>,
     pub dispatcher: UdpDispatcher,
     apps: [GuardedApplications; 4]
 }
 
 impl GlobalBroker {
-    pub fn new(name:Option<String>, ipaddr:String, use_agg_socket:Option<bool>) -> Self {
+    pub fn new(name:Option<String>, ipaddr:String, use_agg_socket:Option<bool>, tx_ipaddr: String) -> Self {
         let apps = [
             Arc::new(Mutex::new( Vec::<Application>::new() )),
             Arc::new(Mutex::new( Vec::<Application>::new() )),
@@ -53,14 +54,14 @@ impl GlobalBroker {
         ];
         let dispatcher = UdpDispatcher::new();
 
-        Self { name, ipaddr, use_agg_socket, dispatcher, apps }
+        Self { name, ipaddr, use_agg_socket, dispatcher, apps , tx_ipaddr}
     }
 
     pub fn add(&mut self, tos: u8, priority: String) -> SourceInput {
         let ac = tos2ac( tos );
 
         let (broker_tx, blocked_signal) = match self.use_agg_socket {
-            Some(false) | None => self.dispatcher.start_new(self.ipaddr.clone(), tos),
+            Some(false) | None => self.dispatcher.start_new(self.ipaddr.clone(), tos, self.tx_ipaddr.clone()),
             Some(true) => {
                 let (tx, blocked_signal) = self.dispatcher.records.get(ac).unwrap();
                 ( tx.clone(), Arc::clone(&blocked_signal) )
@@ -85,7 +86,7 @@ impl GlobalBroker {
         let apps:Vec<_> = self.apps.iter().map(|app| app.clone()).collect();
 
         if let Some(true) = self.use_agg_socket {
-            self.dispatcher.start_agg_sockets( String::new() );
+            self.dispatcher.start_agg_sockets( String::new() , self.tx_ipaddr.clone());
         }
 
         std::thread::spawn(move || {

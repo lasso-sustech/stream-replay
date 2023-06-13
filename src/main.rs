@@ -10,6 +10,8 @@ mod ipc;
 
 use std::collections::HashMap;
 use std::path::Path;
+// use std::rc::Rc;
+
 use clap::Parser;
 use serde_json;
 
@@ -27,6 +29,8 @@ struct ProgArgs {
     /// The target server IP address.
     #[clap( value_parser )]
     target_ip_address: String,
+    #[clap( value_parser )]
+    tx_ip_address: String,
     /// The duration of test procedure (unit: seconds).
     #[clap( value_parser )]
     duration: f64,
@@ -39,6 +43,7 @@ fn main() {
     // load the manifest file
     let args = ProgArgs::parse();
     let ipaddr = args.target_ip_address;
+    let tx_ipaddr = args.tx_ip_address;
     let file = std::fs::File::open(&args.manifest_file).unwrap();
     let reader = std::io::BufReader::new( file );
     let root = Path::new(&args.manifest_file).parent();
@@ -51,7 +56,7 @@ fn main() {
     println!("Orchestrator: {:?}.", orchestrator);
 
     // start broker
-    let mut broker = GlobalBroker::new( orchestrator, ipaddr, manifest.use_agg_socket );
+    let mut broker = GlobalBroker::new( orchestrator, ipaddr, manifest.use_agg_socket, tx_ipaddr.clone());
     let _handle = broker.start();
 
     // spawn the source thread
@@ -61,12 +66,12 @@ fn main() {
         (name, src)
     }).collect();
     let _handles:Vec<_> = sources.iter_mut().enumerate().map(|(i,(_name,src))| {
-        src.start(i+1)
+        src.start(i+1, tx_ipaddr.clone())
     }).collect();
 
     // start global IPC
-    let ipc = IPCDaemon::new( sources, args.ipc_port );
-    ipc.start_loop( args.duration );
+    let ipc = IPCDaemon::new( sources, args.ipc_port,tx_ipaddr.clone());
+    ipc.start_loop( args.duration);
 
     std::process::exit(0); //force exit
 }
