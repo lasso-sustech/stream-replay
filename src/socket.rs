@@ -1,11 +1,11 @@
 use std::net::UdpSocket;
 
 #[cfg(unix)]
-pub fn create_udp_socket(tos: u8) -> Option<UdpSocket> {
+pub fn create_udp_socket(tos: u8, tx_ipaddr: String) -> Option<UdpSocket> {
     use std::os::unix::io::AsRawFd;
 
-    let sock = UdpSocket::bind("0.0.0.0:0").ok()?;
-
+    let sock = UdpSocket::bind(format!("{}:0", tx_ipaddr)).ok()?;
+    print!("tx_ipaddr: {}\n", tx_ipaddr);
     let res = unsafe{
         let fd = sock.as_raw_fd();
         let value = &(tos as i32) as *const libc::c_int as *const libc::c_void;

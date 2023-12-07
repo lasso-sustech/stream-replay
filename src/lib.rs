@@ -14,7 +14,8 @@ struct PriorityTxSocket {
 impl PriorityTxSocket {
     #[new]
     fn new(tos:u8) -> Self {
-        let sock = create_udp_socket(tos).unwrap();
+        let default_tx_iddr = String::from("0.0.0.0");
+        let sock = create_udp_socket(tos,default_tx_iddr).unwrap();
         Self { sock }
     }
 

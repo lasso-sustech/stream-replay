@@ -166,10 +166,10 @@ impl SourceManager {
         Some( Statistics{rtt,throughput} )
     }
 
-    pub fn start(&mut self, index:usize) -> JoinHandle<()> {
+    pub fn start(&mut self, index:usize, tx_ipaddr:String) -> JoinHandle<()> {
         let throttler = Arc::clone(&self.throttler);
         let rtt_tx = match self.rtt {
-            Some(ref mut rtt) => Some( rtt.start() ),
+            Some(ref mut rtt) => Some( rtt.start(tx_ipaddr) ),
             None => None
         };
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = self.stream;

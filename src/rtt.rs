@@ -37,9 +37,9 @@ fn record_thread(rx: RttReceiver, records: GuardedSeqRecords) {
     }
 }
 
-fn pong_recv_thread(name: String, port: u16, seq_records: GuardedSeqRecords, rtt_records: GuardedRttRecords) {
+fn pong_recv_thread(name: String, port: u16, seq_records: GuardedSeqRecords, rtt_records: GuardedRttRecords, tx_ipaddr:String) {
     let mut buf = [0; 2048];
-    let sock = UdpSocket::bind( format!("0.0.0.0:{}", port)).unwrap();
+    let sock = UdpSocket::bind( format!("{}:{}",tx_ipaddr, port)).unwrap();
     let mut logger = File::create( format!("logs/rtt-{}.txt", name) ).unwrap();
 
     while let Ok(_) = sock.recv_from(&mut buf) {
@@ -71,7 +71,7 @@ impl RttRecorder {
         RttRecorder{ name, port, record_handle, recv_handle, rtt_records }
     }
 
-    pub fn start(&mut self) -> RttSender {
+    pub fn start(&mut self,tx_ipaddr:String) -> RttSender {
         let (tx, rx) = mpsc::channel::<u32>();
         let (name, port) = (self.name.clone(), self.port);
         let seq_records1: GuardedSeqRecords = Arc::new(Mutex::new(HashMap::new()));
@@ -82,7 +82,7 @@ impl RttRecorder {
             thread::spawn(move || { record_thread(rx, seq_records1); })
         );
         self.recv_handle = Some(
-            thread::spawn(move || { pong_recv_thread(name, port, seq_records2, rtt_records); } )
+            thread::spawn(move || { pong_recv_thread(name, port, seq_records2, rtt_records, tx_ipaddr); } )
         );
 
         tx

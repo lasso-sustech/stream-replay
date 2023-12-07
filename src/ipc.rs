@@ -22,12 +22,13 @@ struct Response {
 
 pub struct IPCDaemon {
     ipc_port: u16,
+    tx_ipaddr: String,
     sources: HashMap<String, SourceManager>
 }
 
 impl IPCDaemon {
-    pub fn new(sources: HashMap<String, SourceManager>, ipc_port: u16) -> Self {
-        Self{ sources, ipc_port }
+    pub fn new(sources: HashMap<String, SourceManager>, ipc_port: u16, tx_ipaddr:String) -> Self {
+        Self{ sources, ipc_port, tx_ipaddr }
     }
 
     fn handle_request(&self, req:Request) -> Option<Response> {
@@ -65,7 +66,7 @@ impl IPCDaemon {
 
     pub fn start_loop(&self, duration:f64) {
         let deadline = SystemTime::now() + Duration::from_secs_f64(duration);
-        let addr = format!("0.0.0.0:{}", self.ipc_port);
+        let addr = format!("{}:{}",self.tx_ipaddr, self.ipc_port);
         let sock = UdpSocket::bind(&addr).unwrap();
         sock.set_nonblocking(true).unwrap();
         let mut buf = [0; 2048];
