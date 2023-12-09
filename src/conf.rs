@@ -22,6 +22,7 @@ pub struct ConnParams {
     #[serde(default)] pub priority: String, //default: ""
     #[serde(default)] pub calc_rtt: bool,   //default: false
     #[serde(default)] pub no_logging: bool, //default: false
+    #[serde(default)] pub tx_ipaddrs: Vec<String>,
 }
 
 
@@ -71,6 +72,10 @@ impl StreamParam {
             param.duration[1] = duration;
         }
 
+        // TODO: valid ip address
+        
+
+
         Some(self)
     }
 }
@@ -80,5 +85,6 @@ pub struct Manifest {
     pub use_agg_socket: Option<bool>,
     pub orchestrator: Option<String>,
     pub window_size: usize,
-    pub streams: Vec<StreamParam>
+    pub streams: Vec<StreamParam>,
+    pub tx_ipaddrs: Vec<String>
 }

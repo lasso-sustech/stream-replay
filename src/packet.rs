@@ -20,7 +20,7 @@ pub unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
 #[derive(Copy, Clone, Debug)]
 pub struct PacketStruct {
     pub seq: u32,//4 Bytes
-    offset: u16,//2 Bytes
+    pub offset: u16,//2 Bytes
     pub length: u16,//2 Bytes
     pub port: u16,//2 Bytes
     pub timestamp: f64,//8 Bytes

@@ -29,8 +29,8 @@ struct ProgArgs {
     /// The target server IP address.
     #[clap( value_parser )]
     target_ip_address: String,
-    #[clap( value_parser )]
-    tx_ip_address: String,
+    // #[clap( value_parser )]
+    // tx_ip_address: String,
     /// The duration of test procedure (unit: seconds).
     #[clap( value_parser )]
     duration: f64,
@@ -43,7 +43,7 @@ fn main() {
     // load the manifest file
     let args = ProgArgs::parse();
     let ipaddr = args.target_ip_address;
-    let tx_ipaddr = args.tx_ip_address;
+    // let tx_ipaddr = args.tx_ip_address;
     let file = std::fs::File::open(&args.manifest_file).unwrap();
     let reader = std::io::BufReader::new( file );
     let root = Path::new(&args.manifest_file).parent();
@@ -55,8 +55,18 @@ fn main() {
     println!("Sliding Window Size: {}.", window_size);
     println!("Orchestrator: {:?}.", orchestrator);
 
+    // from manifest create a mapping from port to target addr
+    let mut port2ip: HashMap<u16, Vec<String>> = HashMap::new();
+    for stream in &streams {
+        let (port, ip) = match stream {
+            conf::StreamParam::TCP(param) => (param.port, param.tx_ipaddrs.clone()),
+            conf::StreamParam::UDP(param) => (param.port, param.tx_ipaddrs.clone())
+        };
+        port2ip.insert(port, ip);
+    }
+
     // start broker
-    let mut broker = GlobalBroker::new( orchestrator, ipaddr, manifest.use_agg_socket, tx_ipaddr.clone());
+    let mut broker = GlobalBroker::new( orchestrator, ipaddr, manifest.use_agg_socket, manifest.tx_ipaddrs.clone(), port2ip.clone());
     let _handle = broker.start();
 
     // spawn the source thread
@@ -66,11 +76,11 @@ fn main() {
         (name, src)
     }).collect();
     let _handles:Vec<_> = sources.iter_mut().enumerate().map(|(i,(_name,src))| {
-        src.start(i+1, tx_ipaddr.clone())
+        src.start(i+1, String::from("0.0.0.0"))
     }).collect();
 
     // start global IPC
-    let ipc = IPCDaemon::new( sources, args.ipc_port,tx_ipaddr.clone());
+    let ipc = IPCDaemon::new( sources, args.ipc_port, String::from("0.0.0.0"));
     ipc.start_loop( args.duration);
 
     std::process::exit(0); //force exit
