@@ -3,6 +3,7 @@ use std::thread::{JoinHandle, sleep, yield_now};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
+use crate::conf::ConnParams;
 use crate::packet::{PacketStruct, PacketSender, PacketReceiver, tos2ac};
 use crate::dispatcher::{UdpDispatcher, SourceInput};
 
@@ -59,11 +60,11 @@ impl GlobalBroker {
         Self { name, ipaddr, use_agg_socket, dispatcher, apps , tx_ipaddrs, port2ip }
     }
 
-    pub fn add(&mut self, tos: u8, priority: String) -> SourceInput {
+    pub fn add(&mut self, tos: u8, priority: String, param: ConnParams) -> SourceInput {
         let ac = tos2ac( tos );
 
         let (broker_tx, blocked_signal) = match self.use_agg_socket {
-            Some(false) | None => self.dispatcher.start_new(self.ipaddr.clone(), tos, self.tx_ipaddrs.clone(), self.port2ip.clone()),
+            Some(false) | None => self.dispatcher.start_new(self.ipaddr.clone(), tos, param.tx_ipaddrs.clone(), self.port2ip.clone(), param.tx_parts.clone()),
             Some(true) => {
                 let (tx, blocked_signal) = self.dispatcher.records.get(ac).unwrap();
                 ( tx.clone(), Arc::clone(&blocked_signal) )
@@ -88,7 +89,7 @@ impl GlobalBroker {
         let apps:Vec<_> = self.apps.iter().map(|app| app.clone()).collect();
 
         if let Some(true) = self.use_agg_socket {
-            self.dispatcher.start_agg_sockets( String::new() , self.tx_ipaddrs.clone(), self.port2ip.clone());
+            self.dispatcher.start_agg_sockets( String::new() , self.tx_ipaddrs.clone(), self.port2ip.clone(), vec![0]);
         }
 
         std::thread::spawn(move || {

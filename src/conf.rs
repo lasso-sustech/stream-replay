@@ -22,7 +22,8 @@ pub struct ConnParams {
     #[serde(default)] pub priority: String, //default: ""
     #[serde(default)] pub calc_rtt: bool,   //default: false
     #[serde(default)] pub no_logging: bool, //default: false
-    #[serde(default)] pub tx_ipaddrs: Vec<String>,
+    #[serde(default)] pub tx_ipaddrs: Vec<String>, //default: []
+    #[serde(default)] pub tx_parts: Vec<usize>, //default: []
 }
 
 

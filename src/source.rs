@@ -43,8 +43,8 @@ pub fn source_thread(throttler:GuardedThrottler, rtt_tx: Option<RttSender>,
             template.next_seq(_num, _remains);
             template.set_length(UDP_MAX_LENGTH as u16);
             for _ in 0.._num {
-                packets.push( template.clone() );
                 template.next_offset();
+                packets.push( template.clone() );
             }
             if _remains > 0 {
                 template.next_offset();
@@ -109,7 +109,7 @@ impl SourceManager {
     pub fn new(stream: StreamParam, window_size:usize, broker:&mut GlobalBroker) -> Self {
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = stream;
         let name = format!("{}@{}", params.port, params.tos);
-        let (tx, blocked_signal) = broker.add(params.tos, params.priority.clone());
+        let (tx, blocked_signal) = broker.add(params.tos, params.priority.clone(), params.clone());
         let tx = [tx].into();
 
         let throttler = Arc::new(Mutex::new(
