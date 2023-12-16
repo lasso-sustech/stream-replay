@@ -40,7 +40,9 @@ pub fn source_thread(throttler:GuardedThrottler, rtt_tx: Option<RttSender>,
             // 1. generate packets
             let mut packets = Vec::new();
             let (_num, _remains) = (size_bytes/UDP_MAX_LENGTH, size_bytes%UDP_MAX_LENGTH);
+            let num = _num + if _remains > 0 { 1 } else { 0 };
             template.next_seq(_num, _remains);
+            template.set_num(num as u16);
             template.set_length(UDP_MAX_LENGTH as u16);
             for _ in 0.._num {
                 template.next_offset();

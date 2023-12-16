@@ -2,7 +2,7 @@ use std::sync::mpsc;
 
 const IP_HEADER_LENGTH:usize = 20;
 const UDP_HEADER_LENGTH:usize = 8;
-pub const APP_HEADER_LENGTH:usize = 18;
+pub const APP_HEADER_LENGTH:usize = 20;
 pub const UDP_MAX_LENGTH:usize = 1500 - IP_HEADER_LENGTH - UDP_HEADER_LENGTH;
 const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - APP_HEADER_LENGTH;
 
@@ -23,13 +23,17 @@ pub struct PacketStruct {
     pub offset: u16,//2 Bytes, how much left to send
     pub length: u16,//2 Bytes
     pub port: u16,//2 Bytes
+    pub num: u16,//2 Bytes, total number of packets
     pub timestamp: f64,//8 Bytes
     payload: [u8; MAX_PAYLOAD_LEN]
 }
 
 impl PacketStruct {
     pub fn new(port: u16) -> Self {
-        PacketStruct { seq: 0, offset: 0, length: 0, port, timestamp:0.0, payload: [32u8; MAX_PAYLOAD_LEN] }
+        PacketStruct { seq: 0, offset: 0, length: 0, port, timestamp:0.0, num: 0, payload: [32u8; MAX_PAYLOAD_LEN] }
+    }
+    pub fn set_num(&mut self, num: u16) {
+        self.num = num;
     }
     pub fn set_length(&mut self, length: u16) {
         self.length = length;

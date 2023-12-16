@@ -25,12 +25,13 @@ def to_rate(x:str) -> float:
         raise argparse.ArgumentTypeError('Rate should ends with [B|KB|MB].')
 
 def extract(buffer):
-    seq, offset, _length, _port, timestamp = struct.unpack(
-        '<IHHHd', buffer[:18])
-    return (timestamp, seq, offset)
+    seq, offset, _length, _port, num, timestamp = struct.unpack(
+        '<IHHHHd', buffer[:20])
+    return (timestamp, seq, offset, num)
 
+seq_offset = []
 def recv_thread(args, sock, pong_port, pong_sock, trigger):
-    global received_length,received_record,init_time
+    global received_length,received_record,init_time, seq_offset
 
     trigger.acquire() #block until first started
     while True:
@@ -38,10 +39,15 @@ def recv_thread(args, sock, pong_port, pong_sock, trigger):
         received_length += len(_buffer)
         ##
         if args.calc_jitter:
-            timestamp, seq, offset = extract(_buffer)
+            timestamp, seq, offset, num = extract(_buffer)
+            #Collect offset
+            while(seq > len(seq_offset)):
+                seq_offset.append([])
+            seq_offset[seq-1].append( offset ) if offset not in seq_offset[seq-1] else None
             if seq not in received_record:
                 received_record[seq] = ( timestamp, time.time() )
-            if offset==0: #end of packet
+            # print()
+            if type(received_record[seq])==tuple and len(seq_offset[seq-1]) == num: #end of packet
                 if args.calc_rtt:
                     duration = time.time() - received_record[seq][1]
                     _buffer = bytearray(_buffer)
@@ -49,6 +55,7 @@ def recv_thread(args, sock, pong_port, pong_sock, trigger):
                     pong_addr = (addr[0], pong_port)
                     pong_sock.sendto(_buffer, pong_addr)
                 received_record[seq] = time.time() - received_record[seq][0]
+                seq_offset[seq-1] = []
         pass
 
 def main(args):
@@ -98,7 +105,7 @@ def main(args):
         
         _buf = sock.recv(10240)
         if args.calc_jitter:
-            timestamp, init_seq, _ = extract( _buf )
+            timestamp, init_seq, _, __ = extract( _buf )
             received_record[init_seq] = ( timestamp, time.time() )
         init_time = time.time()
     print('started.')

@@ -89,7 +89,7 @@ impl GlobalBroker {
         let apps:Vec<_> = self.apps.iter().map(|app| app.clone()).collect();
 
         if let Some(true) = self.use_agg_socket {
-            self.dispatcher.start_agg_sockets( String::new() , self.tx_ipaddrs.clone(), self.port2ip.clone(), vec![0]);
+            self.dispatcher.start_agg_sockets( String::new() , self.tx_ipaddrs.clone(), self.port2ip.clone(), vec![0.0]);
         }
 
         std::thread::spawn(move || {
