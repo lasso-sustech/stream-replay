@@ -5,6 +5,8 @@ import numpy as np
 import struct
 import io
 import threading
+from queue import Queue
+from threading import Thread
 
 REPLAY_MODULE = 'replay'
 PONG_PORT_INC = 1024
@@ -29,34 +31,44 @@ def extract(buffer):
         '<IHHHHd', buffer[:20])
     return (timestamp, seq, offset, num)
 
-seq_offset = []
+
+def process_packet(args, _buffer, addr, pong_port, pong_sock, seq_offset):
+    global received_length, received_record, init_time
+    received_length += len(_buffer)
+    if args.calc_jitter:
+        timestamp, seq, offset, num = extract(_buffer)
+        if seq not in received_record:
+            received_record[seq] = (timestamp, time.time())
+        while seq >= len(seq_offset):
+            seq_offset.append(set())
+        seq_offset[seq].add(offset)
+        if len(seq_offset[seq]) == num: #end of packet
+            if args.calc_rtt:
+                duration = time.time() - received_record[seq][1]
+                _buffer = bytearray(_buffer)
+                _buffer[10:18] = struct.pack('d', duration)
+                pong_addr = (addr[0], pong_port)
+                pong_sock.sendto(_buffer, pong_addr)
+            received_record[seq] = time.time() - received_record[seq][0]
+            seq_offset[seq] = set()
+
 def recv_thread(args, sock, pong_port, pong_sock, trigger):
-    global received_length,received_record,init_time, seq_offset
+    packet_queue = Queue()
+    def worker():
+        seq_offset = []
+        while True:
+            _buffer, addr = packet_queue.get()
+            if _buffer is None:
+                break
+            process_packet(args, _buffer, addr, pong_port, pong_sock, seq_offset)
+            packet_queue.task_done()
+
+    Thread(target=worker, daemon=True).start()
 
     trigger.acquire() #block until first started
     while True:
         _buffer, addr = sock.recvfrom(2048)
-        received_length += len(_buffer)
-        ##
-        if args.calc_jitter:
-            timestamp, seq, offset, num = extract(_buffer)
-            #Collect offset
-            while(seq > len(seq_offset)):
-                seq_offset.append([])
-            seq_offset[seq-1].append( offset ) if offset not in seq_offset[seq-1] else None
-            if seq not in received_record:
-                received_record[seq] = ( timestamp, time.time() )
-            # print()
-            if type(received_record[seq])==tuple and len(seq_offset[seq-1]) == num: #end of packet
-                if args.calc_rtt:
-                    duration = time.time() - received_record[seq][1]
-                    _buffer = bytearray(_buffer)
-                    _buffer[10:18] = struct.pack('d', duration)
-                    pong_addr = (addr[0], pong_port)
-                    pong_sock.sendto(_buffer, pong_addr)
-                received_record[seq] = time.time() - received_record[seq][0]
-                seq_offset[seq-1] = []
-        pass
+        packet_queue.put((_buffer, addr))
 
 def main(args):
     global received_length,received_record,init_time
@@ -102,6 +114,7 @@ def main(args):
     with (trigger := threading.Lock()):
         t = threading.Thread(target=recv_thread, args=(args, sock, pong_port, pong_sock, trigger), daemon=True)
         t.start()
+        print('started.')
         
         _buf = sock.recv(10240)
         if args.calc_jitter:
