@@ -52,7 +52,6 @@ impl UdpDispatcher {
 
 fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:BlockedSignal, tx_ipaddrs:Vec<String>, port2ip:HashMap<u16, Vec<String>>, tx_parts: Vec<f64>) {
     let addr = format!("{}:0", ipaddr).to_socket_addrs().unwrap().next().unwrap();
-
     // create Hashmap for each tx_ipaddr and set each non blocking
     let mut socket_infos = HashMap::new();
 
@@ -83,31 +82,41 @@ fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:B
     // packet sender
     loop {
         // fetch bulky packets
-        let packets:Vec<_> = rx.try_iter().collect();
+        let mut packets:Vec<_> = rx.try_iter().collect();
         if packets.len()==0 {
             std::thread::sleep( Duration::from_nanos(10_000) );
             continue;
         }
         // send bulky packets aware of blocking status
-        for packet in packets.iter() {
+        for packet in packets.iter_mut() {
             let port = packet.port;
             let num = packet.num as f64;
             let ips = port2ip.get(&port).unwrap();
             // Method II: Redundancy
             let offset = packet.offset as f64;
+
+            packet.set_indicator(0);
+
             if (tx_parts.len() > 0) && (offset as f64 <= tx_parts[0] * num){
+                if offset as f64 == 0.0  {
+                    packet.set_indicator(10);
+                }
                 let tx_ipaddr = ips[ 0 ].clone(); // round robin
                 let sock_tx = socket_infos.get(&tx_ipaddr).unwrap().clone();
                 sock_tx.send( packet.clone() ).unwrap();       
             }            
         }
-        for packet in packets.iter().rev(){
+        for packet in packets.iter_mut().rev(){
+            packet.set_indicator(1);
             let port = packet.port;
             let num = packet.num as f64;
             let ips = port2ip.get(&port).unwrap();
-            // Method II: Redundancy
             let offset = packet.offset as f64;
+            packet.set_indicator(1);
             if (tx_parts.len() > 1) && (offset >= tx_parts[1]  * num){
+                if offset as f64 == num - 1.0 {
+                    packet.set_indicator(11);
+                }
                 let tx_ipaddr = ips[ 1 ].clone(); // round robin
                 let sock_tx = socket_infos.get(&tx_ipaddr).unwrap().clone();
                 sock_tx.send( packet.clone() ).unwrap();   

@@ -2,7 +2,7 @@ use std::sync::mpsc;
 
 const IP_HEADER_LENGTH:usize = 20;
 const UDP_HEADER_LENGTH:usize = 8;
-pub const APP_HEADER_LENGTH:usize = 20;
+pub const APP_HEADER_LENGTH:usize = 21;
 pub const UDP_MAX_LENGTH:usize = 1500 - IP_HEADER_LENGTH - UDP_HEADER_LENGTH;
 const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - APP_HEADER_LENGTH;
 
@@ -24,13 +24,14 @@ pub struct PacketStruct {
     pub length: u16,//2 Bytes
     pub port: u16,//2 Bytes
     pub num: u16,//2 Bytes, total number of packets
+    pub indicator: u8,//1 Byte, 0~9 represents the interface id, 10~19 represents the last packet of interface id 
     pub timestamp: f64,//8 Bytes
     payload: [u8; MAX_PAYLOAD_LEN]
 }
 
 impl PacketStruct {
     pub fn new(port: u16) -> Self {
-        PacketStruct { seq: 0, offset: 0, length: 0, port, timestamp:0.0, num: 0, payload: [32u8; MAX_PAYLOAD_LEN] }
+        PacketStruct { seq: 0, offset: 0, length: 0, port, timestamp:0.0, num: 0, indicator:0 , payload: [32u8; MAX_PAYLOAD_LEN] }
     }
     pub fn set_num(&mut self, num: u16) {
         self.num = num;
@@ -41,6 +42,9 @@ impl PacketStruct {
     pub fn next_seq(&mut self, num: usize, remains:usize) {
         self.seq += 1;
         self.offset = if remains>0 {num as u16+1} else {num as u16};
+    }
+    pub fn set_indicator(&mut self, indicator: u8) {
+        self.indicator = indicator;
     }
     pub fn next_offset(&mut self) {
         self.offset -= 1;
