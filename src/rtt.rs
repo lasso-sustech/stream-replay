@@ -58,7 +58,7 @@ fn pong_recv_thread(name: String, port: u16, seq_records: GuardedSeqRecords, rtt
         } {
             let rtt = time_now - last_time;
             update_rtt_records(&rtt_records, rtt);
-            let message = format!("{} {:.6} {:.6} {:.6}\n", seq, rtt, _duration_ch1 - last_time, _duration_ch2 - last_time);
+            let message = format!("{} {:.6} {:.6} {:.6}\n", seq, rtt, _duration_ch1, _duration_ch2);
             logger.write_all( message.as_bytes() ).unwrap();
         };
     }
