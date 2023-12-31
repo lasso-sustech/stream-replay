@@ -47,8 +47,7 @@ def recv_thread(args, sock, pong_port, pong_sock, trigger):
     global received_length
     trigger.acquire()  # block until first started
     print('started.')
-    current_seq = 0
-    seq_offset = set(); seq_ch_delay = [0, 0]
+    seq_offset = []
     while True:
         _buffer, addr = sock.recvfrom(2048)
         received_length += len(_buffer)
@@ -56,24 +55,22 @@ def recv_thread(args, sock, pong_port, pong_sock, trigger):
             timestamp, seq, offset, num, indicator = extract(_buffer)
             if seq not in received_record:
                 received_record[seq] = (timestamp, time.time())
-            if seq > current_seq:
-                current_seq = seq
-                seq_offset.clear()
-                seq_ch_delay = [0, 0]
-            seq_offset.add(offset)
-            if args.calc_rtt and indicator >= 10:
-                seq_ch_delay[indicator % 10] = time.time() - received_record[seq][1]
-            if len(seq_offset) == num: #end of packet
+            while seq >= len(seq_offset):
+                seq_offset.append([set(), np.array([0,0], dtype=float)])
+            seq_offset[seq][0].add(offset)
+            if args.calc_rtt and indicator >= 10 and type(received_record[seq]) == tuple:
+                seq_offset[seq][1][indicator % 10] = time.time() - received_record[seq][1]
+            if len(seq_offset[seq][0]) == num and type(received_record[seq]) == tuple: #end of packet
                 if args.calc_rtt:
                     duration = time.time() - received_record[seq][1]
                     _buffer = bytearray(_buffer)
                     _buffer[10:18] = struct.pack('d', duration)
-                    _buffer[18:26] = struct.pack('d', seq_ch_delay[0])
-                    _buffer[26:34] = struct.pack('d', seq_ch_delay[1])
+                    _buffer[18:26] = struct.pack('d', seq_offset[seq][1][0])
+                    _buffer[26:34] = struct.pack('d', seq_offset[seq][1][1])
                     pong_addr = (addr[0], pong_port)
                     pong_sock.sendto(_buffer, pong_addr)
                 received_record[seq] = time.time() - received_record[seq][0]
-                seq_offset.clear()
+                seq_offset[seq][0] = set()
 
 
 def main(args):
