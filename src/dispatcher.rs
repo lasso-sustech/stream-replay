@@ -78,7 +78,6 @@ fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:B
             }
         }
     }
-
     // packet sender
     loop {
         // fetch bulky packets
@@ -91,14 +90,15 @@ fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:B
         for packet in packets.iter_mut() {
             let port = packet.port;
             let num = packet.num as f64;
+            let tx_part_ch0 = tx_parts[0] * num;
             let ips = port2ip.get(&port).unwrap();
             // Method II: Redundancy
             let offset = packet.offset as f64;
 
             packet.set_indicator(0);
-
-            if (tx_parts.len() > 0) && (offset as f64 <= tx_parts[0] * num){
-                if offset as f64 == 0.0  {
+            
+            if (tx_parts.len() > 0) && (offset as f64 >= tx_part_ch0){
+                if ( (offset as f64) >= tx_part_ch0) && ( (offset as f64) < (tx_part_ch0 + 1.0))  {
                     packet.set_indicator(10);
                 }
                 let tx_ipaddr = ips[ 0 ].clone(); // round robin
@@ -110,11 +110,12 @@ fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:B
             packet.set_indicator(1);
             let port = packet.port;
             let num = packet.num as f64;
+            let tx_part_ch1 = tx_parts[1] * num;
             let ips = port2ip.get(&port).unwrap();
             let offset = packet.offset as f64;
             packet.set_indicator(1);
-            if (tx_parts.len() > 1) && (offset >= tx_parts[1]  * num){
-                if offset as f64 == num - 1.0 {
+            if (tx_parts.len() > 1) && (offset < tx_part_ch1){
+                if ( (offset as f64) < tx_part_ch1) && ( (offset as f64) >= (tx_part_ch1 - 1.0))  {
                     packet.set_indicator(11);
                 }
                 let tx_ipaddr = ips[ 1 ].clone(); // round robin
