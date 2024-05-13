@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime};
+use std::collections::HashSet;
 use ndarray::prelude::*;
 use ndarray_npy::read_npy;
 
@@ -117,9 +118,10 @@ impl SourceManager {
         let throttler = Arc::new(Mutex::new(
             RateThrottler::new(name.clone(), params.throttle, window_size, params.no_logging, params.loops != usize::MAX)
         ));
+        let link_num = params.tx_ipaddrs.iter().collect::<HashSet<_>>().len() as u16;
         let rtt =  match params.calc_rtt {
             false => None,
-            true => Some( RttRecorder::new( &name, params.port ) )
+            true => Some( RttRecorder::new( &name, params.port, link_num ) )
         };
 
         let start_timestamp = SystemTime::now();
