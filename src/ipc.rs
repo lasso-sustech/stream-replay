@@ -9,15 +9,24 @@ pub struct Statistics {
 }
 
 #[derive(Serialize, Deserialize, Debug,Clone)]
+enum RequestValue {
+    Throttle(HashMap<String, f64>),
+    Statistics(HashMap<String, f64>),
+}
+
+#[derive(Serialize, Deserialize, Debug,Clone)]
+enum ResponseValue {
+    Statistics(HashMap<String,Statistics>),
+}
+
+#[derive(Serialize, Deserialize, Debug,Clone)]
 struct Request {
-    cmd: String,
-    body: Option<HashMap<String,f64>>
+    cmd: RequestValue,
 }
 
 #[derive(Serialize, Deserialize, Debug,Clone)]
 struct Response {
-    cmd: String,
-    body: Option<HashMap<String,Statistics>>
+    cmd: ResponseValue,
 }
 
 pub struct IPCDaemon {
@@ -32,15 +41,12 @@ impl IPCDaemon {
     }
 
     fn handle_request(&self, req:Request) -> Option<Response> {
-        let cmd = req.cmd.clone();
-
-        match req.cmd.as_str() {
-            "throttle" => {
-                if let Some(data) = req.body {
-                    let _:Vec<_> = data.iter().map(|(name, value)| {
-                        self.sources[name].throttle(*value);
-                    }).collect();
-                }
+        match req.cmd {
+            RequestValue::Throttle(data) => {
+                let _:Vec<_> = data.iter().map(|(name, value)| {
+                    self.sources[name].throttle(*value);
+                }).collect();
+                
                 // reset RTT records for all
                 let _:Vec<_> = self.sources.iter().map(|(_,src)| {
                     src.reset_rtt_records()
@@ -49,7 +55,7 @@ impl IPCDaemon {
                 return None;
             },
 
-            "statistics" => {
+            RequestValue::Statistics(_)  => {
                 let body = Some( self.sources.iter().filter_map(|(name,src)| {
                     match src.statistics() {
                         Some(stat) => Some(( name.clone(), stat )),
@@ -57,10 +63,8 @@ impl IPCDaemon {
                     }
                 }).collect() );
                 //
-                return Some(Response{ cmd, body });
-            },
-
-            _ => { return None; }
+                return Some(Response{ cmd: ResponseValue::Statistics(body.unwrap())});
+            }
         }
     }
 
