@@ -17,6 +17,7 @@ use clap::Parser;
 use serde_json;
 
 use crate::conf::Manifest;
+use crate::conf::StreamParam;
 use crate::ipc::IPCDaemon;
 use crate::source::SourceManager;
 use crate::broker::GlobalBroker;
@@ -60,14 +61,14 @@ fn main() {
     let mut port2ip: HashMap<u16, Vec<String>> = HashMap::new();
     for stream in &streams {
         let (port, ip) = match stream {
-            conf::StreamParam::TCP(param) => (param.port, param.tx_ipaddrs.clone()),
-            conf::StreamParam::UDP(param) => (param.port, param.tx_ipaddrs.clone())
+            StreamParam::TCP(param) => (param.port.clone(), param.tx_ipaddrs.clone()),
+            StreamParam::UDP(param) => (param.port.clone(), param.tx_ipaddrs.clone())
         };
         port2ip.insert(port, ip);
     }
 
     // start broker
-    let mut broker = GlobalBroker::new( orchestrator, ipaddr, manifest.use_agg_socket, port2ip.clone());
+    let mut broker = GlobalBroker::new( orchestrator, ipaddr, manifest.use_agg_socket, port2ip);
     let _handle = broker.start();
 
     // spawn the source thread
