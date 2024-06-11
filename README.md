@@ -21,10 +21,9 @@
 cargo run -- <manifest_file> <target_ip_address> <duration> [--ipc-port <IPC_PORT>]
 ```
 
-**Rx:**
-```bash
-python3 ./udp_rx.py -p <port> -t <duration> [--calc-jitter [--calc-rtt [--tos <TOS>]]]
-```
+**Rx:** ~~`python3 ./udp_rx.py -p <port> -t <duration> [--calc-jitter [--calc-rtt [--tos <TOS>]]]`~~(deprecated)
+
+
 
 ### Screenshot
 
