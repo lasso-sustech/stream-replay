@@ -111,7 +111,7 @@ pub struct SourceManager{
 impl SourceManager {
     pub fn new(stream: StreamParam, window_size:usize, broker:&mut GlobalBroker) -> Self {
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = stream;
-        let name = format!("{}@{}", params.port, params.tos);
+        let name = stream.name();
         let (tx, blocked_signal) = broker.add(params.tos, params.priority.clone(), params.clone());
         let tx = [tx].into();
 

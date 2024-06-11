@@ -79,6 +79,14 @@ impl StreamParam {
 
         Some(self)
     }
+
+    pub fn name(&self) -> String {
+        match self {
+            StreamParam::TCP(params) => format!("{}@{}", params.port, params.tos),
+            StreamParam::UDP(params) => format!("{}@{}", params.port, params.tos),
+        }
+    }
+
 }
 
 #[derive(Serialize, Deserialize, Debug)]
