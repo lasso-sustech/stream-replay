@@ -44,7 +44,7 @@ struct ProgArgs {
 fn main() {
     // load the manifest file
     let args = ProgArgs::parse();
-    let ipaddr = args.target_ip_address;
+    let target_ipaddr = args.target_ip_address;
     // let tx_ipaddr = args.tx_ip_address;
     let file = std::fs::File::open(&args.manifest_file).unwrap();
     let reader = std::io::BufReader::new( file );
@@ -68,7 +68,7 @@ fn main() {
     }
 
     // start broker
-    let mut broker = GlobalBroker::new( orchestrator, ipaddr, manifest.use_agg_socket, port2ip);
+    let mut broker = GlobalBroker::new( orchestrator, target_ipaddr, port2ip);
     let _handle = broker.start();
 
     // spawn the source thread

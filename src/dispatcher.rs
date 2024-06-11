@@ -8,33 +8,30 @@ use crate::socket::{*};
 use crate::tx_part_ctl::TxPartCtler;
 use std::net::UdpSocket;
 
-pub type SourceInput = (PacketSender, BlockedSignal);
+pub type SourceInput = (PacketSender, BlockedSignal, Arc<Mutex<TxPartCtler>>);
 pub type BlockedSignal = Arc<Mutex<bool>>;
 
 pub struct UdpDispatcher {
-    pub records: Vec<SourceInput>,
     handles: Vec<JoinHandle<()>>,
 }
 
 impl UdpDispatcher {
     pub fn new() -> Self {
-        let records = Vec::new();
         let handles = Vec::new();
-        Self { records, handles}
+        Self { handles}
     }
 
-    pub fn start_new(&mut self, ipaddr:String, tos:u8, tx_ipaddrs: Vec<String>, port2ip: HashMap<u16, Vec<String>>, tx_parts: Vec<f64>) -> SourceInput {
+    pub fn start_new(&mut self,  ipaddr:String, port2ip: HashMap<u16, Vec<String>>, tos:u8, tx_ipaddrs: Vec<String>,tx_parts: Vec<f64>) -> SourceInput {
         let (tx, rx) = mpsc::channel::<PacketStruct>();
         let blocked_signal:BlockedSignal = Arc::new(Mutex::new(false));
         let cloned_blocked_signal = Arc::clone(&blocked_signal);
         let tx_part_ctler = Arc::new(Mutex::new(TxPartCtler::new( tx_parts.clone(), port2ip.clone())));
         let cloned_tx_part_ctler = Arc::clone(&tx_part_ctler);
         let handle = thread::spawn(move || {
-            dispatcher_thread(rx, ipaddr, tos, blocked_signal, tx_ipaddrs.clone(), cloned_tx_part_ctler)
+            dispatcher_thread(rx, ipaddr, tos, blocked_signal, tx_ipaddrs.clone(), tx_part_ctler)
         });
 
-        let res = ( tx.clone(), Arc::clone(&cloned_blocked_signal) );
-        self.records.push( (tx, cloned_blocked_signal) );
+        let res = ( tx.clone(), Arc::clone(&cloned_blocked_signal), cloned_tx_part_ctler );
         self.handles.push( handle );
         res
     }

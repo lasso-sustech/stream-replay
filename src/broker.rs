@@ -41,13 +41,12 @@ pub struct GlobalBroker {
     name: Option<String>,
     ipaddr: String,
     port2ip: HashMap<u16, Vec<String>>,
-    use_agg_socket: Option<bool>,
     pub dispatcher: UdpDispatcher,
     apps: [GuardedApplications; 4]
 }
 
 impl GlobalBroker {
-    pub fn new(name:Option<String>, ipaddr:String, use_agg_socket:Option<bool>, port2ip: HashMap<u16, Vec<String>> ) -> Self {
+    pub fn new(name:Option<String>, ipaddr:String, port2ip: HashMap<u16, Vec<String>> ) -> Self {
         let apps = [
             Arc::new(Mutex::new( Vec::<Application>::new() )),
             Arc::new(Mutex::new( Vec::<Application>::new() )),
@@ -56,22 +55,28 @@ impl GlobalBroker {
         ];
         let dispatcher = UdpDispatcher::new();
 
-        Self { name, ipaddr, use_agg_socket, dispatcher, apps , port2ip }
+        Self { name, ipaddr, dispatcher, apps , port2ip }
     }
 
-    pub fn add(&mut self, tos: u8, priority: String, param: ConnParams) -> SourceInput {
-        let ac = tos2ac( tos );
+    pub fn add(&mut self, param: ConnParams) -> SourceInput {
+        let tos = param.tos;
+        let priority = param.priority.clone();
+        let tx_ipaddrs = param.tx_ipaddrs.clone();
+        let tx_parts = param.tx_parts.clone();
+        let ac = tos2ac( param.tos );
 
-        let (broker_tx, blocked_signal) = match self.use_agg_socket {
-            Some(false) | None => self.dispatcher.start_new(self.ipaddr.clone(), tos, param.tx_ipaddrs.clone(), self.port2ip.clone(), param.tx_parts.clone()),
-            Some(true) => {
-                let (tx, blocked_signal) = self.dispatcher.records.get(ac).unwrap();
-                ( tx.clone(), Arc::clone(&blocked_signal) )
-            }
+        let (broker_tx, blocked_signal, tx_part_ctl) = {
+            self.dispatcher.start_new(
+                self.ipaddr.clone(), 
+                self.port2ip.clone(),
+                tos, 
+                tx_ipaddrs, 
+                tx_parts
+            )
         };
 
         match self.name {
-            None => (broker_tx, blocked_signal),
+            None => (broker_tx, blocked_signal, tx_part_ctl),
             Some(_) => {
                 let (tx, broker_rx) = mpsc::channel::<PacketStruct>();
 
@@ -79,7 +84,7 @@ impl GlobalBroker {
                 let app = Application{ conn, priority };
                 self.apps[ac].lock().unwrap().push( app );
 
-                (tx, blocked_signal)
+                (tx, blocked_signal, tx_part_ctl)
             }
         }
     }

@@ -15,8 +15,13 @@ impl TxPartCtler {
         }
     }
 
+    pub fn set_tx_parts(&mut self, tx_parts: Vec<f64>) {
+        self.tx_parts = tx_parts;
+    }
+
     pub fn process_packets(&self, mut packets: Vec<PacketStruct>) -> HashMap::<String, Vec<PacketStruct>> {
         let mut part_packets = HashMap::<String, Vec<PacketStruct>>::new();
+        println!("tx_parts: {:?}", self.tx_parts);
         for packet in packets.iter_mut() {
             let port = packet.port;
             let num = packet.num as f64;

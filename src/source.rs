@@ -12,6 +12,7 @@ use crate::throttle::RateThrottler;
 use crate::rtt::{RttRecorder,RttSender};
 use crate::dispatcher::BlockedSignal;
 use crate::ipc::Statistics;
+use crate::tx_part_ctl::TxPartCtler;
 
 type GuardedThrottler = Arc<Mutex<RateThrottler>>;
 
@@ -103,6 +104,7 @@ pub struct SourceManager{
     //
     throttler: GuardedThrottler,
     rtt: Option<RttRecorder>,
+    tx_part_ctler: Arc<Mutex<TxPartCtler>>,
     //
     tx: Vec<PacketSender>,
     blocked_signal: BlockedSignal
@@ -112,9 +114,9 @@ impl SourceManager {
     pub fn new(stream: StreamParam, window_size:usize, broker:&mut GlobalBroker) -> Self {
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = stream;
         let name = stream.name();
-        let (tx, blocked_signal) = broker.add(params.tos, params.priority.clone(), params.clone());
+        let (tx, blocked_signal, tx_part_ctler) = broker.add(params.clone());
         let tx = [tx].into();
-
+        
         let throttler = Arc::new(Mutex::new(
             RateThrottler::new(name.clone(), params.throttle, window_size, params.no_logging, params.loops != usize::MAX)
         ));
@@ -127,12 +129,18 @@ impl SourceManager {
         let start_timestamp = SystemTime::now();
         let stop_timestamp = SystemTime::now();
 
-        Self{ name, stream, throttler, rtt, tx, blocked_signal, start_timestamp, stop_timestamp }
+        Self{ name, stream, throttler, rtt, tx_part_ctler, tx, blocked_signal, start_timestamp, stop_timestamp }
     }
 
     pub fn throttle(&self, throttle:f64) {
         if let Ok(ref mut throttler) = self.throttler.lock() {
             throttler.throttle = throttle;
+        }
+    }
+
+    pub fn set_tx_parts(&self, tx_parts:Vec<f64>) {
+        if let Ok(ref mut tx_part_ctler) = self.tx_part_ctler.lock() {
+            tx_part_ctler.set_tx_parts(tx_parts);
         }
     }
 

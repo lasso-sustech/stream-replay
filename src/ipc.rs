@@ -11,6 +11,7 @@ pub struct Statistics {
 #[derive(Serialize, Deserialize, Debug,Clone)]
 enum RequestValue {
     Throttle(HashMap<String, f64>),
+    TxPart(HashMap<String, Vec<f64>>),
     Statistics(HashMap<String, f64>),
 }
 
@@ -50,6 +51,14 @@ impl IPCDaemon {
                 // reset RTT records for all
                 let _:Vec<_> = self.sources.iter().map(|(_,src)| {
                     src.reset_rtt_records()
+                }).collect();
+                //
+                return None;
+            },
+
+            RequestValue::TxPart(data) => {
+                let _:Vec<_> = data.iter().map(|(name, value)| {
+                    self.sources[name].set_tx_parts(value.clone());
                 }).collect();
                 //
                 return None;
