@@ -5,6 +5,7 @@ use std::net::ToSocketAddrs;
 use std::time::Duration;
 use crate::packet::{PacketSender,PacketReceiver, PacketStruct, APP_HEADER_LENGTH, any_as_u8_slice};
 use crate::socket::{*};
+use crate::tx_part_ctl::TxPartCtler;
 use std::net::UdpSocket;
 
 pub type SourceInput = (PacketSender, BlockedSignal);
@@ -12,45 +13,35 @@ pub type BlockedSignal = Arc<Mutex<bool>>;
 
 pub struct UdpDispatcher {
     pub records: Vec<SourceInput>,
-    handles: Vec<JoinHandle<()>>
+    handles: Vec<JoinHandle<()>>,
 }
 
 impl UdpDispatcher {
     pub fn new() -> Self {
         let records = Vec::new();
         let handles = Vec::new();
-
-        Self { records, handles }
+        Self { records, handles}
     }
 
     pub fn start_new(&mut self, ipaddr:String, tos:u8, tx_ipaddrs: Vec<String>, port2ip: HashMap<u16, Vec<String>>, tx_parts: Vec<f64>) -> SourceInput {
         let (tx, rx) = mpsc::channel::<PacketStruct>();
         let blocked_signal:BlockedSignal = Arc::new(Mutex::new(false));
         let cloned_blocked_signal = Arc::clone(&blocked_signal);
+        let tx_part_ctler = Arc::new(Mutex::new(TxPartCtler::new( tx_parts.clone(), port2ip.clone())));
+        let cloned_tx_part_ctler = Arc::clone(&tx_part_ctler);
         let handle = thread::spawn(move || {
-            dispatcher_thread(rx, ipaddr, tos, blocked_signal, tx_ipaddrs.clone(), port2ip.clone(), tx_parts.clone())
+            dispatcher_thread(rx, ipaddr, tos, blocked_signal, tx_ipaddrs.clone(), cloned_tx_part_ctler)
         });
 
         let res = ( tx.clone(), Arc::clone(&cloned_blocked_signal) );
         self.records.push( (tx, cloned_blocked_signal) );
         self.handles.push( handle );
-
         res
-    }
-
-    pub fn start_agg_sockets(&mut self, ipaddr:String, tx_ipaddrs: Vec<String>, port2ip: HashMap<u16, Vec<String>>, tx_parts: Vec<f64>) {
-        let ipaddr_list = std::iter::repeat(ipaddr);
-        let tos_list = [192, 128, 96, 32];
-        let _:Vec<_> = std::iter::zip(ipaddr_list, tos_list).map(
-            |(ipaddr, tos)| {
-                self.start_new(ipaddr, tos, tx_ipaddrs.clone(), port2ip.clone(), tx_parts.clone())
-            }
-        ).collect(); //discard the cloned responses
     }
 
 }
 
-fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:BlockedSignal, tx_ipaddrs:Vec<String>, port2ip:HashMap<u16, Vec<String>>, tx_parts: Vec<f64>) {
+fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:BlockedSignal, tx_ipaddrs:Vec<String>, tx_part_ctler:Arc<Mutex<TxPartCtler>>) {
     let addr = format!("{}:0", ipaddr).to_socket_addrs().unwrap().next().unwrap();
     // create Hashmap for each tx_ipaddr and set each non blocking
     let mut socket_infos = HashMap::new();
@@ -81,48 +72,20 @@ fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:B
     // packet sender
     loop {
         // fetch bulky packets
-        let mut packets:Vec<_> = rx.try_iter().collect();
+        let packets:Vec<_> = rx.try_iter().collect();
         if packets.len()==0 {
             std::thread::sleep( Duration::from_nanos(10_000) );
             continue;
         }
-        // send bulky packets aware of blocking status
-        for packet in packets.iter_mut() {
-            let port = packet.port;
-            let num = packet.num as f64;
-            let tx_part_ch0 = tx_parts[0] * num;
-            let ips = port2ip.get(&port).unwrap();
-            // Method II: Redundancy
-            let offset = packet.offset as f64;
-
-            packet.set_indicator(0);
-            
-            if (tx_parts.len() > 0) && (offset as f64 >= tx_part_ch0){
-                if ( (offset as f64) >= tx_part_ch0) && ( (offset as f64) < (tx_part_ch0 + 1.0))  {
-                    packet.set_indicator(10);
-                }
-                let tx_ipaddr = ips[ 0 ].clone(); // round robin
+        // prepare packets for each tx_ipaddr
+        let _ = tx_part_ctler.lock().unwrap().process_packets(packets)
+            .into_iter()
+            .for_each(|(tx_ipaddr, packets)| {
                 let sock_tx = socket_infos.get(&tx_ipaddr).unwrap().clone();
-                sock_tx.send( packet.clone() ).unwrap();       
-            }            
-        }
-        for packet in packets.iter_mut().rev(){
-            packet.set_indicator(1);
-            let port = packet.port;
-            let num = packet.num as f64;
-            let tx_part_ch1 = tx_parts[1] * num;
-            let ips = port2ip.get(&port).unwrap();
-            let offset = packet.offset as f64;
-            packet.set_indicator(1);
-            if (tx_parts.len() > 1) && (offset < tx_part_ch1){
-                if ( (offset as f64) < tx_part_ch1) && ( (offset as f64) >= (tx_part_ch1 - 1.0))  {
-                    packet.set_indicator(11);
-                }
-                let tx_ipaddr = ips[ 1 ].clone(); // round robin
-                let sock_tx = socket_infos.get(&tx_ipaddr).unwrap().clone();
-                sock_tx.send( packet.clone() ).unwrap();   
-            }
-        }
+                let _ = packets.into_iter().for_each(move |packet| {
+                    sock_tx.send( packet.clone() ).unwrap();
+                });
+        });
     }
 }
 

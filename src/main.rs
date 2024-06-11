@@ -7,6 +7,7 @@ mod dispatcher;
 mod rtt;
 mod socket;
 mod ipc;
+mod tx_part_ctl;
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -66,7 +67,7 @@ fn main() {
     }
 
     // start broker
-    let mut broker = GlobalBroker::new( orchestrator, ipaddr, manifest.use_agg_socket, manifest.tx_ipaddrs.clone(), port2ip.clone());
+    let mut broker = GlobalBroker::new( orchestrator, ipaddr, manifest.use_agg_socket, port2ip.clone());
     let _handle = broker.start();
 
     // spawn the source thread
