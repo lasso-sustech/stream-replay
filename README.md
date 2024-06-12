@@ -18,10 +18,20 @@
 
 **Tx:**
 ```bash
-cargo run -- <manifest_file> <target_ip_address> <duration> [--ipc-port <IPC_PORT>]
+cargo run --bin stream-replay <manifest_file> <target_ip_address> <duration> [--ipc-port <IPC_PORT>]
 ```
 
-**Rx:** ~~`python3 ./udp_rx.py -p <port> -t <duration> [--calc-jitter [--calc-rtt [--tos <TOS>]]]`~~(deprecated)
+**Rx:** 
+
+Python-based reciever
+```bash
+python3 ./udp_rx.py -p <port> -t <duration> [--calc-jitter [--calc-rtt [--tos <TOS>]]]
+```
+
+Rust-based receiver
+```bash
+cargo run --bin stream-replay-rx <port> <duration> [calc-rtt]
+```
 
 
 
