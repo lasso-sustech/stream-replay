@@ -6,10 +6,12 @@ use std::thread::{self, JoinHandle};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::SystemTime;
 
+use crate::packet::PacketStruct;
+
 type SeqRecords = HashMap<u32,f64>;
 type GuardedSeqRecords = Arc<Mutex<SeqRecords>>;
 type RttRecords = (usize, f64);
-type GuardedRttRecords = Arc<Mutex<RttRecords>>;
+type GuardedRttRecords = Arc<Mutex<Vec<RttRecords>>>;
 pub type RttSender = mpsc::Sender<u32>;
 type RttReceiver = mpsc::Receiver<u32>;
 static PONG_PORT_INC:u16 = 1024;
@@ -28,10 +30,12 @@ struct LinkRttCount{
     max_link_num: u16,
 }
 
-fn update_rtt_records(records:&GuardedRttRecords, rtt:f64) {
+fn update_rtt_records(records:&GuardedRttRecords, rtt:f64, channel_indicator: u8) {
     if let Ok(mut records) = records.lock() {
-        let (len, sum_rtt) = *records;
-        *records = (len+1, sum_rtt+rtt);
+        if let Some(record) = records.get_mut(channel_indicator as usize) {
+            record.0 += 1;
+            record.1 += rtt;
+        }
     }
 }
 
@@ -53,8 +57,8 @@ fn pong_recv_thread(name: String, port: u16, seq_records: GuardedSeqRecords, rtt
         let seq = u32::from_le_bytes( msg );
         let _msg: [u8;8] = buf[10..18].try_into().unwrap();
         let _duration = f64::from_le_bytes( _msg );
-        let __msg : [u8;8] = buf[18..26].try_into().unwrap();
-        let _duration_ch1 = f64::from_le_bytes( __msg );
+        let __msg : [u8;1] = buf[18..19].try_into().unwrap();
+        let indicator = u8::from_le_bytes( __msg );
         let time_now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
         if let Some(last_time) = {
             let mut _records = seq_records.lock().unwrap();
@@ -69,8 +73,8 @@ fn pong_recv_thread(name: String, port: u16, seq_records: GuardedSeqRecords, rtt
             }
         } {
             let rtt = time_now - last_time;
-            update_rtt_records(&rtt_records, rtt);
-            let message = format!("{} {:.6} {:.6} \n", seq, rtt, _duration_ch1,);
+            update_rtt_records(&rtt_records, rtt, PacketStruct::channel_info(indicator));
+            let message = format!("{} {:.6} {:.6} \n", seq, rtt, PacketStruct::channel_info(indicator));
             logger.write_all( message.as_bytes() ).unwrap();
         };
     }
@@ -82,8 +86,7 @@ impl RttRecorder {
         let port = port + PONG_PORT_INC; //pong recv port
         let record_handle = None;
         let recv_handle = None;
-        let rtt_records = Arc::new(Mutex::new( (0,0.0) ));
-
+        let rtt_records = Arc::new(Mutex::new(vec![(0, 0.0); mul_link_num as usize]));
         RttRecorder{ name, port, record_handle, recv_handle, rtt_records, mul_link_num }
     }
 

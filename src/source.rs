@@ -158,7 +158,12 @@ impl SourceManager {
     pub fn reset_rtt_records(&self) {
         if let Some(ref rtt) = self.rtt {
             if let Ok(mut records) = rtt.rtt_records.lock() {
-                *records = (0, 0.0);
+                records.iter_mut().for_each(|(count,val)|
+                {
+                    *count = 0;
+                    *val = 0.0;
+                }
+            ) 
             }
         }
     }
@@ -178,10 +183,18 @@ impl SourceManager {
 
         let rtt = {
             match &self.rtt {
-                None => 0.0,
+                None => vec![0.0],
                 Some(recorder) => match recorder.rtt_records.lock() {
                     Err(_) => return None,
-                    Ok(val) => val.1/(val.0 as f64)
+                    Ok(vals) => {
+                        let mut rtt = Vec::new();
+                        for (count,val) in vals.iter() {
+                            if *count > 0 {
+                                rtt.push( *val/(*count as f64) );
+                            }
+                        }
+                        rtt
+                    }
                 }
             }
         };

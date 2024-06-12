@@ -55,7 +55,7 @@ impl TxPartCtler {
             let port = packet.port;
             let ips = self.port2ip.get(&port).unwrap();
             let tx_ipaddr = ips[1].clone();
-            if packet.channel_info() == 0 {
+            if PacketStruct::channel_info(packet.indicators) == 0 {
                 if part_packets.contains_key(&tx_ipaddr) {
                     part_packets.get_mut(&tx_ipaddr).unwrap().push(packet.clone());
                 } else {
@@ -69,7 +69,7 @@ impl TxPartCtler {
             let port = packet.port;
             let ips = self.port2ip.get(&port).unwrap();
             let tx_ipaddr = ips[1].clone();
-            if packet.channel_info() == 1 {
+            if PacketStruct::channel_info(packet.indicators) == 1 {
                 if part_packets.contains_key(&tx_ipaddr) {
                     part_packets.get_mut(&tx_ipaddr).unwrap().push(packet.clone());
                 } else {

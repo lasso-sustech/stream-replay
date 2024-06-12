@@ -52,8 +52,9 @@ impl PacketStruct {
     pub fn clear_channel(&mut self) {
         self.indicators &= 0b11111100;
     }
-    pub fn channel_info(&self) -> u8 {
-        self.indicators & 0b00000001
+
+    pub fn channel_info( indicators: u8) -> u8 {
+        indicators & 0b00000001
     }
 
     pub fn next_offset(&mut self) {
