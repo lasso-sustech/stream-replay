@@ -15,8 +15,9 @@ use crate::ipc::Statistics;
 use crate::tx_part_ctl::TxPartCtler;
 
 type GuardedThrottler = Arc<Mutex<RateThrottler>>;
+type GuardedTxPartCtler = Arc<Mutex<TxPartCtler>>;
 
-pub fn source_thread(throttler:GuardedThrottler, rtt_tx: Option<RttSender>,
+pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtler, rtt_tx: Option<RttSender>,
     params: ConnParams, tx:PacketSender, blocked_signal:BlockedSignal)
 {
     let trace: Array2<u64> = read_npy(&params.npy_file).expect("loading failed.");
@@ -44,15 +45,25 @@ pub fn source_thread(throttler:GuardedThrottler, rtt_tx: Option<RttSender>,
             let (_num, _remains) = (size_bytes/UDP_MAX_LENGTH, size_bytes%UDP_MAX_LENGTH);
             let num = _num + if _remains > 0 { 1 } else { 0 };
             template.next_seq(_num, _remains);
-            template.set_num(num as u16);
             template.set_length(UDP_MAX_LENGTH as u16);
+            let mut packet_states = tx_part_ctler.lock().unwrap().get_packet_states(num);
             for _ in 0.._num {
                 template.next_offset();
+                template.clear_channel();
+                let (is_ch0, is_ch1, is_last) = packet_states.remove(0);
+                if is_ch0   {template.set_channel0()}
+                if is_ch1   {template.set_channel1()}
+                if is_last  {template.set_channel_last_packet()}
                 packets.push( template.clone() );
             }
             if _remains > 0 {
                 template.next_offset();
                 template.set_length(_remains as u16);
+                template.clear_channel();
+                let (is_ch0, is_ch1, is_last) = packet_states.remove(0);
+                if is_ch0   {template.set_channel0()}
+                if is_ch1   {template.set_channel1()}
+                if is_last  {template.set_channel_last_packet()}
                 packets.push( template.clone() );
             }
 
@@ -180,6 +191,7 @@ impl SourceManager {
 
     pub fn start(&mut self, index:usize, tx_ipaddr:String) -> JoinHandle<()> {
         let throttler = Arc::clone(&self.throttler);
+        let tx_part_ctler = Arc::clone(&self.tx_part_ctler);
         let rtt_tx = match self.rtt {
             Some(ref mut rtt) => Some( rtt.start(tx_ipaddr) ),
             None => None
@@ -193,7 +205,7 @@ impl SourceManager {
         self.start_timestamp = _now + Duration::from_secs_f64( params.duration[0] );
         self.stop_timestamp = _now + Duration::from_secs_f64( params.duration[1] );
         let source = thread::spawn(move || {
-            source_thread(throttler, rtt_tx, params, tx, blocked_signal)
+            source_thread(throttler, tx_part_ctler, rtt_tx, params, tx, blocked_signal)
         });
 
         println!("{}. {} on ...", index, self.stream);

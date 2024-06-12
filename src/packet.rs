@@ -2,7 +2,7 @@ use std::sync::mpsc;
 
 const IP_HEADER_LENGTH:usize = 20;
 const UDP_HEADER_LENGTH:usize = 8;
-pub const APP_HEADER_LENGTH:usize = 21;
+pub const APP_HEADER_LENGTH:usize = 19;
 pub const UDP_MAX_LENGTH:usize = 1500 - IP_HEADER_LENGTH - UDP_HEADER_LENGTH;
 const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - APP_HEADER_LENGTH;
 
@@ -19,22 +19,18 @@ pub unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
 #[repr(C,packed)]
 #[derive(Copy, Clone, Debug)]
 pub struct PacketStruct {
-    pub seq: u32,//4 Bytes
-    pub offset: u16,//2 Bytes, how much left to send
-    pub length: u16,//2 Bytes
-    pub port: u16,//2 Bytes
-    pub num: u16,//2 Bytes, total number of packets
-    pub indicator: u8,//1 Byte, 0~9 represents the interface id, 10~19 represents the last packet of interface id 
-    pub timestamp: f64,//8 Bytes
+    pub seq: u32,       //4 Bytes
+    pub offset: u16,    //2 Bytes, how much left to send
+    pub length: u16,    //2 Bytes
+    pub port: u16,      //2 Bytes
+    pub indicators: u8, //1 byte, 0 - 1 represents the interface id, 10~19 represents the last packet of interface id 
+    pub timestamp: f64, //8 Bytes
     payload: [u8; MAX_PAYLOAD_LEN]
 }
 
 impl PacketStruct {
     pub fn new(port: u16) -> Self {
-        PacketStruct { seq: 0, offset: 0, length: 0, port, timestamp:0.0, num: 0, indicator:0 , payload: [32u8; MAX_PAYLOAD_LEN] }
-    }
-    pub fn set_num(&mut self, num: u16) {
-        self.num = num;
+        PacketStruct { seq: 0, offset: 0, length: 0, port, timestamp:0.0, indicators:0 , payload: [32u8; MAX_PAYLOAD_LEN] }
     }
     pub fn set_length(&mut self, length: u16) {
         self.length = length;
@@ -43,9 +39,23 @@ impl PacketStruct {
         self.seq += 1;
         self.offset = if remains>0 {num as u16+1} else {num as u16};
     }
-    pub fn set_indicator(&mut self, indicator: u8) {
-        self.indicator = indicator;
+
+    pub fn set_channel0(&mut self) {
+        self.indicators |= 0b00000001;
     }
+    pub fn set_channel1(&mut self) {
+        self.indicators &= 0b11111110;
+    }
+    pub fn set_channel_last_packet(&mut self) {
+        self.indicators |= 0b00000010;
+    }
+    pub fn clear_channel(&mut self) {
+        self.indicators &= 0b11111100;
+    }
+    pub fn channel_info(&self) -> u8 {
+        self.indicators & 0b00000001
+    }
+
     pub fn next_offset(&mut self) {
         self.offset -= 1;
     }
