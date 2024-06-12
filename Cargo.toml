@@ -7,6 +7,10 @@ edition = "2021"
 name = "stream-replay"
 path = "src/main.rs"
 
+[[bin]]
+name = "stream-replay-rx"
+path = "src/rx.rs"
+
 [lib]
 name = "replay"
 crate-type = ["cdylib"]
