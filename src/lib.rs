@@ -1,33 +1,35 @@
-mod socket;
+use std::os::raw::c_char;
+use std::ffi::{CString, CStr};
 
-use pyo3::prelude::*;
-use std::borrow::Cow;
-use std::net::UdpSocket;
-use crate::socket::*;
+#[no_mangle]
+pub extern fn rust_greeting(to: *const c_char) -> *mut c_char {
+    let c_str = unsafe { CStr::from_ptr(to) };
+    let recipient = match c_str.to_str() {
+        Err(_) => "there",
+        Ok(string) => string,
+    };
 
-#[pyclass]
-struct PriorityTxSocket {
-    sock: UdpSocket
+    CString::new("Hello ".to_owned() + recipient).unwrap().into_raw()
 }
 
-#[pymethods]
-impl PriorityTxSocket {
-    #[new]
-    fn new(tos:u8) -> Self {
-        let default_tx_iddr = String::from("0.0.0.0");
-        let sock = create_udp_socket(tos,default_tx_iddr).unwrap();
-        Self { sock }
-    }
+#[cfg(target_os="android")]
+#[allow(non_snake_case)]
+pub mod android {
+    extern crate jni;
 
-    #[pyo3(name = "sendto")]
-    fn send_to(&self, buf:Cow<[u8]>, addr_port:(String,u16)) {
-        let addr = format!("{}:{}", addr_port.0, addr_port.1);
-        self.sock.send_to(&buf, &addr).unwrap();
-    }
-}
+    use super::*;
+    use self::jni::JNIEnv;
+    use self::jni::objects::{JClass, JString};
+    use self::jni::sys::jstring;
 
-#[pymodule]
-fn replay(_py:Python, m:&PyModule) -> PyResult<()> {
-    m.add_class::<PriorityTxSocket>()?;
-    Ok(())
+    #[no_mangle]
+    pub unsafe extern fn Java_com_mozilla_greetings_RustGreetings_greeting(env: JNIEnv, _: JClass, java_pattern: JString) -> jstring {
+        // Our Java companion code might pass-in "world" as a string, hence the name.
+        let world = rust_greeting(env.get_string(java_pattern).expect("invalid pattern string").as_ptr());
+        // Retake pointer so that we can use it below and allow memory to be freed when it goes out of scope.
+        let world_ptr = CString::from_raw(world);
+        let output = env.new_string(world_ptr.to_str().unwrap()).expect("Couldn't create java string!");
+
+        output.into_inner()
+    }
 }

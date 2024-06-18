@@ -3,14 +3,6 @@ name = "stream-replay"
 version = "0.1.0"
 edition = "2021"
 
-[[bin]]
-name = "stream-replay"
-path = "src/main.rs"
-
-[[bin]]
-name = "stream-replay-rx"
-path = "src/rx.rs"
-
 [lib]
 name = "replay"
 crate-type = ["cdylib"]
@@ -22,7 +14,6 @@ ndarray = "0.15"
 ndarray-npy = "0.8"
 clap = { version = "3.2.20", features = ["derive"] }
 spin_sleep = "1.0"
-pyo3 = { version = "0.18.2", features = ["extension-module"] }
 
 [dependencies.serde]
 version = "1.0"
@@ -35,3 +26,6 @@ libc = "0.2"
 version = "0.46"
 features=[ "Win32_System_IO", "Win32_Foundation", "Win32_Networking_WinSock", "Win32_NetworkManagement_QoS",
             "Win32_System_Diagnostics_Debug"]
+
+[target.'cfg(target_os="android")'.dependencies]
+jni = { version = "0.5", default-features = false }
