@@ -51,22 +51,8 @@ impl std::fmt::Display for StreamParam {
 }
 
 impl StreamParam {
-    pub fn validate(mut self, root:Option<&Path>, duration:f64) -> Option<Self> {
+    pub fn validate(mut self, _root:Option<&Path>, duration:f64) -> Option<Self> {
         let ( Self::TCP(ref mut param) | Self::UDP(ref mut param) ) = self;
-
-        // validate npy file existence
-        let cwd = std::env::current_dir().unwrap();
-        let path_trail1 = cwd.join( &param.npy_file );
-        let path_trail2 = root.unwrap_or( cwd.as_path() ).join( &param.npy_file );
-        if path_trail1.exists() {
-            param.npy_file = String::from( path_trail1.to_str().unwrap() );
-        }
-        else if path_trail2.exists() {
-            param.npy_file = String::from( path_trail2.to_str().unwrap() );
-        }
-        else {
-            return None;
-        }
 
         // validate duration
         if param.duration[1] > duration {
@@ -74,8 +60,6 @@ impl StreamParam {
         }
 
         // TODO: valid ip address
-        
-
 
         Some(self)
     }

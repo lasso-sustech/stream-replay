@@ -8,6 +8,7 @@ mod rtt;
 mod socket;
 mod ipc;
 mod tx_part_ctl;
+mod android;
 
 use std::collections::HashMap;
 use std::path::Path;

@@ -28,4 +28,6 @@ features=[ "Win32_System_IO", "Win32_Foundation", "Win32_Networking_WinSock", "W
             "Win32_System_Diagnostics_Debug"]
 
 [target.'cfg(target_os="android")'.dependencies]
-jni = { version = "0.5", default-features = false }
+jni = { version = "0.21" }
+ndk = { version = "0.9", features = ["api-level-26"] }
+ndk-sys = { version = "0.6" }

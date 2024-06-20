@@ -3,7 +3,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime};
 use std::collections::HashSet;
 use ndarray::prelude::*;
-use ndarray_npy::read_npy;
+use ndarray_npy::{read_npy,ReadNpyExt};
 
 use crate::conf::{StreamParam, ConnParams};
 use crate::packet::*;
@@ -20,7 +20,19 @@ type GuardedTxPartCtler = Arc<Mutex<TxPartCtler>>;
 pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtler, rtt_tx: Option<RttSender>,
     params: ConnParams, tx:PacketSender, blocked_signal:BlockedSignal)
 {
-    let trace: Array2<u64> = read_npy(&params.npy_file).expect("loading failed.");
+    let trace: Array2<u64> = if cfg!(target_os="android") {
+        let asset_path = std::ffi::CString::new(params.npy_file).unwrap();
+        let asset_reader = unsafe {
+            if let Some(am) = crate::android::ASSET_MANAGER.as_ref() {
+                am.open(&asset_path).unwrap()
+            } else {
+                panic!("Asset Manager is not initialized.")
+            }
+        };
+        Array2::<u64>::read_npy(asset_reader).unwrap()
+    } else {
+        read_npy(&params.npy_file).expect("loading failed.")
+    };
     let (start_offset, duration) = (params.start_offset, params.duration);
     let mut template = PacketStruct::new(params.port);
     let spin_sleeper = spin_sleep::SpinSleeper::new(100_000)
