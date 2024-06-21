@@ -4,6 +4,7 @@ use std::time::{Duration, SystemTime};
 use std::collections::HashSet;
 use ndarray::prelude::*;
 use ndarray_npy::{read_npy,ReadNpyExt};
+use std::sync::mpsc::channel;
 
 use crate::conf::{StreamParam, ConnParams};
 use crate::packet::*;
@@ -16,6 +17,12 @@ use crate::tx_part_ctl::TxPartCtler;
 
 type GuardedThrottler = Arc<Mutex<RateThrottler>>;
 type GuardedTxPartCtler = Arc<Mutex<TxPartCtler>>;
+
+pub fn stream_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtler, rtt_tx: Option<RttSender>,
+    params: ConnParams, tx:PacketSender, blocked_signal:BlockedSignal, dest: PacketReceiver)
+{
+
+}
 
 pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtler, rtt_tx: Option<RttSender>,
     params: ConnParams, tx:PacketSender, blocked_signal:BlockedSignal)
@@ -121,6 +128,8 @@ pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
 pub struct SourceManager{
     pub name: String,
     stream: StreamParam,
+    pub source: Vec<PacketSender>,
+    dest: Vec<PacketReceiver>,
     //
     start_timestamp: SystemTime,
     stop_timestamp: SystemTime,
@@ -152,7 +161,14 @@ impl SourceManager {
         let start_timestamp = SystemTime::now();
         let stop_timestamp = SystemTime::now();
 
-        Self{ name, stream, throttler, rtt, tx_part_ctler, tx, blocked_signal, start_timestamp, stop_timestamp }
+        let (source, dest) = if params.npy_file.starts_with(STREAM_PROTO) {
+            let (tx, rx) = channel();
+            (vec![tx], vec![rx])
+        } else {
+            (vec![], vec![])
+        };
+
+        Self{ name, stream, throttler, rtt, tx_part_ctler, tx, blocked_signal, start_timestamp, stop_timestamp, source, dest }
     }
 
     pub fn throttle(&self, throttle:f64) {
@@ -229,8 +245,15 @@ impl SourceManager {
         let _now = SystemTime::now();
         self.start_timestamp = _now + Duration::from_secs_f64( params.duration[0] );
         self.stop_timestamp = _now + Duration::from_secs_f64( params.duration[1] );
+
+        let dest = self.dest.pop();
         let source = thread::spawn(move || {
-            source_thread(throttler, tx_part_ctler, rtt_tx, params, tx, blocked_signal)
+            if params.npy_file.starts_with(STREAM_PROTO) {
+                let dest = dest.unwrap();
+                stream_thread(throttler, tx_part_ctler, rtt_tx, params, tx, blocked_signal, dest)
+            } else {
+                source_thread(throttler, tx_part_ctler, rtt_tx, params, tx, blocked_signal)
+            }
         });
 
         println!("{}. {} on ...", index, self.stream);

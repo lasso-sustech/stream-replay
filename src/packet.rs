@@ -6,6 +6,8 @@ pub const APP_HEADER_LENGTH:usize = 19;
 pub const UDP_MAX_LENGTH:usize = 1500 - IP_HEADER_LENGTH - UDP_HEADER_LENGTH;
 const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - APP_HEADER_LENGTH;
 
+pub const STREAM_PROTO: &str = "stream://";
+
 pub type PacketSender   = mpsc::Sender<PacketStruct>;
 pub type PacketReceiver = mpsc::Receiver<PacketStruct>;
 
@@ -25,7 +27,7 @@ pub struct PacketStruct {
     pub port: u16,      //2 Bytes
     pub indicators: u8, //1 byte, 0 - 1 represents the interface id, 10~19 represents the last packet of interface id 
     pub timestamp: f64, //8 Bytes
-    payload: [u8; MAX_PAYLOAD_LEN]
+    pub payload: [u8; MAX_PAYLOAD_LEN]
 }
 
 impl PacketStruct {
@@ -59,6 +61,10 @@ impl PacketStruct {
 
     pub fn next_offset(&mut self) {
         self.offset -= 1;
+    }
+
+    pub fn set_payload(&mut self, payload: &[u8]) {
+        self.payload[..payload.len()].copy_from_slice(payload);
     }
 }
 
