@@ -9,10 +9,10 @@ use std::io::ErrorKind;
 const PONG_PORT_INC: u16 = 1024;
 
 #[derive(Parser)]
-struct Args {
-    port: u16,
-    duration: u32,
-    calc_rtt : bool
+pub struct Args {
+    pub port: u16,
+    pub duration: u32,
+    pub calc_rtt : bool
 }
 
 struct RecvRecord{
@@ -26,16 +26,16 @@ impl RecvRecord{
         }
     }
 }
-struct RecvData{
+pub struct RecvData{
     recv_records: Vec<RecvRecord>,
-    data_len: u32,
-    rx_start_time: f64,
+    pub data_len: u32,
+    pub rx_start_time: f64,
 }
 
 
 
 impl RecvData{
-    fn new() -> Self{
+    pub fn new() -> Self{
         Self{
             recv_records: Vec::new(),
             data_len: 0,
@@ -72,7 +72,7 @@ fn main() {
     println!("Average Throughput: {:.3} Mbps", data_len as f64 / rx_duration / 1e6 * 8.0);
 }
 
-fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mutex<bool>>){
+pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mutex<bool>>){
     let addr = format!("0.0.0.0:{}", args.port);    
     let socket = UdpSocket::bind(&addr).unwrap();
     socket.set_nonblocking(true).unwrap();

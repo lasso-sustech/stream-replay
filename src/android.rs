@@ -1,6 +1,7 @@
 use std::os::raw::c_char;
 use std::ffi::CStr;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use serde_json;
 
 use crate::conf::Manifest;
@@ -9,6 +10,7 @@ use crate::ipc::IPCDaemon;
 use crate::source::SourceManager;
 use crate::broker::GlobalBroker;
 use crate::packet::*;
+use crate::rx::{recv_thread, RecvData};
 
 use jni::JNIEnv;
 use jni::objects::{JClass, JObject, JString, JByteArray};
@@ -20,10 +22,10 @@ pub static mut SENDER_MAP: Option<HashMap<String, PacketSender>> = None;
 
 #[cfg(target_os="android")]
 #[no_mangle]
-pub extern "C" fn start(
+pub extern "C" fn start_tx(
     manifest_file: *const c_char,
-    ipaddr1: *const c_char,
-    ipaddr2: *const c_char,
+    ipaddr1_tx: *const c_char, ipaddr1_rx: *const c_char,
+    ipaddr2_tx: *const c_char, ipaddr2_rx: *const c_char,
     duration: f64,
     ipc_port: u16,
 )
@@ -35,8 +37,10 @@ pub extern "C" fn start(
     }
 
     let manifest_file: String = unsafe { CStr::from_ptr(manifest_file).to_string_lossy().into_owned() };
-    let ipaddr1: String = unsafe { CStr::from_ptr(ipaddr1).to_string_lossy().into_owned() };
-    let ipaddr2: String = unsafe { CStr::from_ptr(ipaddr2).to_string_lossy().into_owned() };
+    let ipaddr1_tx: String = unsafe { CStr::from_ptr(ipaddr1_tx).to_string_lossy().into_owned() };
+    let ipaddr2_tx: String = unsafe { CStr::from_ptr(ipaddr2_tx).to_string_lossy().into_owned() };
+    let ipaddr1_rx: String = unsafe { CStr::from_ptr(ipaddr1_rx).to_string_lossy().into_owned() };
+    let _ipaddr2_rx: String = unsafe { CStr::from_ptr(ipaddr2_rx).to_string_lossy().into_owned() };
 
     //load the manifest file
     let asset_path = std::ffi::CString::new(manifest_file).unwrap();
@@ -49,11 +53,11 @@ pub extern "C" fn start(
     };
     let mut manifest:Manifest = serde_json::from_reader(asset_reader).unwrap();
     //update manifest file
-    manifest.tx_ipaddrs = vec![ipaddr1.clone(), ipaddr2.clone()];
+    manifest.tx_ipaddrs = vec![ipaddr1_tx.clone(), ipaddr2_tx.clone()];
     manifest.streams.iter_mut().for_each(|stream| {
         match stream {
             StreamParam::TCP(param) | StreamParam::UDP(param) => {
-                param.tx_ipaddrs = vec![ipaddr1.clone(), ipaddr2.clone()];
+                param.tx_ipaddrs = vec![ipaddr1_tx.clone(), ipaddr2_tx.clone()];
             }
         }
     });
@@ -76,7 +80,7 @@ pub extern "C" fn start(
     }
 
     // start broker
-    let mut broker = GlobalBroker::new( orchestrator, ipaddr1, port2ip);
+    let mut broker = GlobalBroker::new( orchestrator, ipaddr1_rx, port2ip);
     let _handle = broker.start();
 
     // spawn the source thread
@@ -102,14 +106,49 @@ pub extern "C" fn start(
 }
 
 #[cfg(target_os="android")]
+#[no_mangle]
+pub extern "C" fn start_rx(
+    port: u16,
+    duration: u32,
+    calc_rtt: bool,
+)
+{
+    let args = crate::rx::Args { port, duration, calc_rtt };
+    let recv_data = Arc::new(Mutex::new(RecvData::new()));
+    let recv_data_thread = Arc::clone(&recv_data);
+
+    // Extract duration from args
+    let duration = args.duration.clone();
+    
+    let lock = Arc::new(Mutex::new(false));
+    let lock_clone = Arc::clone(&lock);
+    
+    std::thread::spawn(move || {
+        recv_thread(args, recv_data_thread, lock_clone);
+    });
+
+    
+    while !*lock.lock().unwrap() {
+        std::thread::sleep(std::time::Duration::from_nanos(100_000) );
+    }
+
+    // Sleep for the duration
+    std::thread::sleep(std::time::Duration::from_secs(duration as u64));
+    let data_len = recv_data.lock().unwrap().data_len;
+    println!("Received Bytes: {:.3} MB", data_len as f64/ 1024.0 / 1024.0);
+    let rx_duration = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() - recv_data.lock().unwrap().rx_start_time;
+    println!("Average Throughput: {:.3} Mbps", data_len as f64 / rx_duration / 1e6 * 8.0);
+}
+
+#[cfg(target_os="android")]
 #[allow(non_snake_case)]
 #[allow(dead_code)]
-pub extern "system" fn Java_com_github_magicsih_androidscreencaster_RustStreamReplay_start(
+pub extern "system" fn Java_com_github_magicsih_androidscreencaster_RustStreamReplay_start_tx(
     mut env: JNIEnv, _: JClass,
     asset_manager: JObject,
     manifest_file: JString,
-    ipaddr1: JString,
-    ipaddr2: JString,
+    ipaddr1_tx: JString, ipaddr1_rx: JString,
+    ipaddr2_tx: JString, ipaddr2_rx: JString,
     duration: f64,
     ipc_port: u16,
 )
@@ -124,10 +163,23 @@ pub extern "system" fn Java_com_github_magicsih_androidscreencaster_RustStreamRe
     };
 
     let manifest_file = env.get_string(&manifest_file).expect("invalid manifest file string").as_ptr();
-    let ipaddr1 = env.get_string(&ipaddr1).expect("invalid ipaddr1 string").as_ptr();
-    let ipaddr2 = env.get_string(&ipaddr2).expect("invalid ipaddr2 string").as_ptr();
+    let ipaddr1_tx = env.get_string(&ipaddr1_tx).expect("invalid ipaddr1_tx string").as_ptr();
+    let ipaddr1_rx = env.get_string(&ipaddr1_rx).expect("invalid ipaddr1_rx string").as_ptr();
+    let ipaddr2_tx = env.get_string(&ipaddr2_tx).expect("invalid ipaddr2_tx string").as_ptr();
+    let ipaddr2_rx = env.get_string(&ipaddr2_rx).expect("invalid ipaddr2_rx string").as_ptr();
 
-    start(manifest_file, ipaddr1, ipaddr2, duration, ipc_port);
+    start_tx(manifest_file, ipaddr1_tx, ipaddr1_rx, ipaddr2_tx, ipaddr2_rx, duration, ipc_port);
+}
+
+#[cfg(target_os="android")]
+#[allow(non_snake_case)]
+#[allow(dead_code)]
+pub extern "system" fn Java_com_github_magicsih_androidscreencaster_RustStreamReplay_start_rx(
+    mut _env: JNIEnv, _: JClass,
+    port: u16, duration: u32, calc_rtt: bool,
+)
+{
+    start_rx(port, duration, calc_rtt);
 }
 
 #[cfg(target_os="android")]
