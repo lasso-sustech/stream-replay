@@ -1,10 +1,11 @@
+#![allow(dead_code)]
 use std::sync::mpsc;
 
 const IP_HEADER_LENGTH:usize = 20;
 const UDP_HEADER_LENGTH:usize = 8;
 pub const APP_HEADER_LENGTH:usize = 19;
 pub const UDP_MAX_LENGTH:usize = 1500 - IP_HEADER_LENGTH - UDP_HEADER_LENGTH;
-const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - APP_HEADER_LENGTH;
+pub const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - APP_HEADER_LENGTH;
 
 pub type PacketSender   = mpsc::Sender<PacketStruct>;
 pub type PacketReceiver = mpsc::Receiver<PacketStruct>;
@@ -25,7 +26,7 @@ pub struct PacketStruct {
     pub port: u16,      //2 Bytes
     pub indicators: u8, //1 byte, 0 - 1 represents the interface id, 10~19 represents the last packet of interface id 
     pub timestamp: f64, //8 Bytes
-    payload: [u8; MAX_PAYLOAD_LEN]
+    pub payload: [u8; MAX_PAYLOAD_LEN]
 }
 
 impl PacketStruct {
@@ -38,6 +39,9 @@ impl PacketStruct {
     pub fn next_seq(&mut self, num: usize, remains:usize) {
         self.seq += 1;
         self.offset = if remains>0 {num as u16+1} else {num as u16};
+    }
+    pub fn next_offset(&mut self) {
+        self.offset -= 1;
     }
 
     pub fn set_channel0(&mut self) {
@@ -57,8 +61,26 @@ impl PacketStruct {
         indicators & 0b00000001
     }
 
-    pub fn next_offset(&mut self) {
-        self.offset -= 1;
+    pub fn from_buffer(buffer: &[u8]) -> Self {
+        let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
+        let offset = u16::from_le_bytes(buffer[4..6].try_into().unwrap());
+        let length = u16::from_le_bytes(buffer[6..8].try_into().unwrap());
+        let port = u16::from_le_bytes(buffer[8..10].try_into().unwrap());
+        let indicators = buffer[10];
+        let timestamp = f64::from_le_bytes(buffer[11..19].try_into().unwrap());
+        
+        let mut payload = [0u8; MAX_PAYLOAD_LEN];
+        payload[0..length as usize-19].copy_from_slice(&buffer[19..length as usize]);
+
+        PacketStruct {
+            seq,
+            offset,
+            length,
+            port,
+            indicators,
+            timestamp,
+            payload,
+        }
     }
 }
 
