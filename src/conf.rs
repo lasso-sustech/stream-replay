@@ -3,9 +3,12 @@ use rand::prelude::*;
 use rand::distributions::Standard;
 use serde::{Serialize, Deserialize};
 
+use crate::link::Link;
+
 const fn _default_duration() -> [f64; 2] { [0.0, f64::MAX] }
 const fn _default_loops() -> usize { usize::MAX }
 fn _random_value<T>() -> T where Standard: Distribution<T> { rand::thread_rng().gen() }
+
 #[derive(Serialize, Deserialize, Debug,Clone)]
 pub struct ConnParams {
     pub npy_file: String,
@@ -22,7 +25,7 @@ pub struct ConnParams {
     #[serde(default)] pub priority: String, //default: ""
     #[serde(default)] pub calc_rtt: bool,   //default: false
     #[serde(default)] pub no_logging: bool, //default: false
-    #[serde(default)] pub tx_ipaddrs: Vec<String>, //default: []
+    #[serde(default)] pub links: Vec<Link>, //default: [[]]
     #[serde(default)] pub tx_parts: Vec<f64>, //default: []
 }
 

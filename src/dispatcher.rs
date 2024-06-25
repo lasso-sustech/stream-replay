@@ -3,6 +3,8 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::net::ToSocketAddrs;
 use std::time::Duration;
+use crate::link::Link;
+
 use crate::packet::{PacketSender,PacketReceiver, PacketStruct, APP_HEADER_LENGTH, any_as_u8_slice};
 use crate::socket::{*};
 use crate::tx_part_ctl::TxPartCtler;
@@ -21,14 +23,14 @@ impl UdpDispatcher {
         Self { handles}
     }
 
-    pub fn start_new(&mut self,  ipaddr:String, port2ip: HashMap<u16, Vec<String>>, tos:u8, tx_ipaddrs: Vec<String>,tx_parts: Vec<f64>) -> SourceInput {
+    pub fn start_new(&mut self, links: Vec<Link>, tos:u8, tx_parts: Vec<f64>) -> SourceInput {
         let (tx, rx) = mpsc::channel::<PacketStruct>();
         let blocked_signal:BlockedSignal = Arc::new(Mutex::new(false));
         let cloned_blocked_signal = Arc::clone(&blocked_signal);
-        let tx_part_ctler = Arc::new(Mutex::new(TxPartCtler::new( tx_parts.clone(), port2ip.clone())));
+        let tx_part_ctler = Arc::new(Mutex::new(TxPartCtler::new( tx_parts.clone(), links.clone() )));
         let cloned_tx_part_ctler = Arc::clone(&tx_part_ctler);
         let handle = thread::spawn(move || {
-            dispatcher_thread(rx, ipaddr, tos, blocked_signal, tx_ipaddrs.clone(), tx_part_ctler)
+            dispatcher_thread(rx, links, tos, blocked_signal,  tx_part_ctler)
         });
 
         let res = ( tx.clone(), Arc::clone(&cloned_blocked_signal), cloned_tx_part_ctler );
@@ -38,13 +40,14 @@ impl UdpDispatcher {
 
 }
 
-fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:BlockedSignal, tx_ipaddrs:Vec<String>, tx_part_ctler:Arc<Mutex<TxPartCtler>>) {
-    let addr = format!("{}:0", ipaddr).to_socket_addrs().unwrap().next().unwrap();
+fn dispatcher_thread(rx: PacketReceiver, links:Vec<Link>, tos:u8, blocked_signal:BlockedSignal,  tx_part_ctler:Arc<Mutex<TxPartCtler>>) {
     // create Hashmap for each tx_ipaddr and set each non blocking
     let mut socket_infos = HashMap::new();
 
     let mut handles = Vec::new();
-    for tx_ipaddr in tx_ipaddrs.iter() {
+    for link in links.iter() {
+        let tx_ipaddr = link.tx_ipaddr.clone();
+        let rx_addr =  format!("{}:0",link.rx_ipaddr.clone()).to_socket_addrs().unwrap().next().unwrap();
         let blocked_signal = Arc::clone(&blocked_signal);
         let socket = create_udp_socket(tos, tx_ipaddr.clone());
         let (socket_tx, socket_rx) = mpsc::channel::<PacketStruct>();
@@ -53,7 +56,7 @@ fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:B
             socket_infos.insert(tx_ipaddr.clone(),  socket_tx );
             let _handle = thread::spawn(move || {
                 let socket = socket.try_clone().unwrap();
-                socket_thread(socket, socket_rx, blocked_signal, addr);
+                socket_thread(socket, socket_rx, blocked_signal, rx_addr);
             });
             handles.push(_handle);
         }
@@ -61,7 +64,7 @@ fn dispatcher_thread(rx: PacketReceiver, ipaddr:String, tos:u8, blocked_signal:B
             let packets:Vec<_> = rx.try_iter().collect();
             for packet in packets.iter() {
                 let port = packet.port;
-                eprintln!("Socket creation failure: {}:{}@{}.", ipaddr, port, tos);
+                eprintln!("Socket creation failure: {}:{}@{}.", tx_ipaddr, port, tos);
                 break;
             }
         }
