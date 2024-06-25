@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::net::UdpSocket;
 use std::sync::{Arc, Mutex};
 use clap::Parser;
+use packet::PacketType;
 use std::io::ErrorKind;
 
 use crate::packet::PacketStruct;
@@ -17,30 +18,30 @@ struct Args {
     rx_mode: bool,
 }
 
-struct RecvRecord{
+struct RecvRecord {
     packets: HashMap<u16, PacketStruct>, // Use a HashMap to store packets by their offset
-    indicators: (bool, bool),
+    indicators: (bool, bool, bool),
 }
 
-impl RecvRecord{
+impl RecvRecord {
     fn new() -> Self{
         Self{
             packets: HashMap::<u16, PacketStruct>::new(),
-            indicators: (false, false),
+            indicators: (false, false, false),
         }
     }
     fn record(&mut self, data: &[u8]){
         let packet = PacketStruct::from_buffer(data);
-        if packet.indicators == 2 {
-            self.indicators.0 = true;
-        }
-        else if packet.indicators == 3 {
-            self.indicators.1 = true;
+        match PacketStruct::get_packet_type(packet.indicators) {
+            PacketType::SL => self.indicators.0 = true,
+            PacketType::DFL => self.indicators.1 = true,
+            PacketType::DSL => self.indicators.2 = true,
+            _ => {}
         }
         self.packets.insert(packet.offset as u16, packet);
     }
     fn complete(&self) -> bool{
-        if self.indicators.0 && self.indicators.1 {
+        if self.indicators.0 || (self.indicators.1 && self.indicators.2) {
             let num_packets = self.packets.len();
             if num_packets == 0 {
                 return false; // No packets, return false
@@ -56,7 +57,6 @@ impl RecvRecord{
     }
     fn gather(&self) -> Vec<u8>{
         let mut data = Vec::new();
-        // print all keys
         let num_packets = self.packets.len();
         for i in 0..num_packets{
             let packet = self.packets.get(&(i as u16)).unwrap();
@@ -85,16 +85,16 @@ impl RecvData{
 fn main() {
     let args = Args::parse();
     let recv_data = Arc::new(Mutex::new(RecvData::new()));
-    let recv_data_thread = Arc::clone(&recv_data);
+    let recv_data_final = Arc::clone(&recv_data);
 
     // Extract duration from args
-    let duration = args.duration.clone();
+    let duration = args.duration;
     
     let lock = Arc::new(Mutex::new(false));
     let lock_clone = Arc::clone(&lock);
     
     std::thread::spawn(move || {
-        recv_thread(args, recv_data_thread, lock_clone);
+        recv_thread(args, recv_data, lock_clone);
     });
 
     while !*lock.lock().unwrap() {
@@ -104,8 +104,8 @@ fn main() {
     // Sleep for the duration
     std::thread::sleep(std::time::Duration::from_secs(duration as u64));
 
-    let data_len = recv_data.lock().unwrap().data_len;
-    let rx_duration = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() - recv_data.lock().unwrap().rx_start_time;
+    let data_len = recv_data_final.lock().unwrap().data_len;
+    let rx_duration = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() - recv_data_final.lock().unwrap().rx_start_time;
 
     println!("Received Bytes: {:.3} MB", data_len as f64/ 1024.0 / 1024.0);
     println!("Average Throughput: {:.3} Mbps", data_len as f64 / rx_duration / 1e6 * 8.0);
@@ -166,21 +166,24 @@ fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mutex<bo
             }
 
             let indicator = u8::from_le_bytes(buffer[10..11].try_into().unwrap());
-            if (indicator == 2) || (indicator == 3) {
-                let modified_addr = format!("{}:{}", src_addr.ip(), args.port + PONG_PORT_INC);
-                buffer[18..19].copy_from_slice((indicator ).to_le_bytes().as_ref());
-                loop {
-                    match pong_socket.send_to(&mut buffer[.._len], &modified_addr) {
-                        Ok(_) => {break;},
-                        Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                            println!("Send operation would block, retrying later...");
-                        }
-                        Err(e) => {
-                            eprintln!("Error sending data: {}", e);
-                            break;
+            match PacketStruct::get_packet_type(indicator) {
+                PacketType::SL | PacketType::DFL | PacketType::DSL => {
+                    let ping_addr = format!("{}:{}", src_addr.ip(), args.port + PONG_PORT_INC);
+                    buffer[18..19].copy_from_slice(( indicator ).to_le_bytes().as_ref());
+                    loop {
+                        match pong_socket.send_to(&mut buffer[.._len], &ping_addr) {
+                            Ok(_) => {break;},
+                            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                                println!("Send operation would block, retrying later...");
+                            }
+                            Err(e) => {
+                                eprintln!("Error sending data: {}", e);
+                                break;
+                            }
                         }
                     }
-                }
+                },
+                _ => {}
             }
 
         }

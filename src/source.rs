@@ -46,26 +46,17 @@ pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
             template.next_seq(_num, _remains);
             template.set_length(UDP_MAX_LENGTH as u16);
             let mut packet_states = tx_part_ctler.lock().unwrap().get_packet_states(num);
-            for _ in 0.._num {
+            for idx in 0..num {
                 template.next_offset();
-                template.clear_channel();
-                let (is_ch0, is_ch1, is_last) = packet_states.remove(0);
-                if is_ch0   {template.set_channel0()}
-                if is_ch1   {template.set_channel1()}
-                if is_last  {template.set_channel_last_packet()}
-                packets.push( template.clone() );
+                if idx == num-1 {
+                    template.set_length(_remains as u16);
+                }
+                let packet_types = packet_states.remove(0);
+                for packet_type in packet_types {
+                    template.set_indicator(packet_type);
+                    packets.push(template.clone());
+                }
             }
-            if _remains > 0 {
-                template.next_offset();
-                template.set_length(_remains as u16);
-                template.clear_channel();
-                let (is_ch0, is_ch1, is_last) = packet_states.remove(0);
-                if is_ch0   {template.set_channel0()}
-                if is_ch1   {template.set_channel1()}
-                if is_last  {template.set_channel_last_packet()}
-                packets.push( template.clone() );
-            }
-
             // 2. append to application-layer queue
             throttler.lock().unwrap().prepare( packets );
             // report RTT

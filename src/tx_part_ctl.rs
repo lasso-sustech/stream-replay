@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::vec;
 use crate::packet::PacketStruct;
+use crate::packet::PacketType;
 use crate::link::Link;
 
 #[derive(Debug)]
@@ -33,29 +35,44 @@ impl TxPartCtler {
     //              ^           ^
     //              |           |
     //         tx_part_ch1  tx_part_ch0
-    pub fn get_packet_state(&self, offset: u16, num: usize) -> (bool, bool, bool) {
+    pub fn get_packet_state(&self, offset: u16, num: usize) -> Vec<PacketType> {
         if self.tx_parts.len() < 2 {
-            if offset == 0 {
-                return (true, false, true)
+            if offset == (num as u16 - 1) {
+                return vec![PacketType::SL];
             }
-            return (true, false, false)
+            return vec![PacketType::SNL];
         }
 
         let tx_part_ch0 = self.tx_parts[0] * num as f64;
         let tx_part_ch1 = self.tx_parts[1] * num as f64;
         let offset = offset as f64;
-        let is_ch0_p = offset >= tx_part_ch0;
-        let is_ch1_p = offset < tx_part_ch1;
-        if is_ch0_p && (offset >= tx_part_ch0 && offset < tx_part_ch0 + 1.0) {
-            return (is_ch0_p, is_ch1_p, true)
+        let is_ch0 = offset >= tx_part_ch0;
+        let is_ch1 = offset <  tx_part_ch1;
+        let is_last_ch0 = offset < (tx_part_ch0 + 1.0);
+        let is_last_ch1 = offset >= (tx_part_ch1 - 1.0);
+
+        let mut type_vec = Vec::<PacketType>::new();
+        if let Some(packet_type) = match (is_ch0, is_last_ch0) {
+            (true, false) => Some(PacketType::DFN),
+            (true, true) => Some(PacketType::DFL),
+            (false, _) => None,
+        } {
+            type_vec.push(packet_type);
         }
-        if is_ch1_p && (offset < tx_part_ch1 && offset >= tx_part_ch1 - 1.0) {
-            return (is_ch0_p, is_ch1_p, true)
+    
+        if let Some(packet_type) = match (is_ch1, is_last_ch1) {
+            (true, false) => Some(PacketType::DSM),
+            (true, true) => Some(PacketType::DSL),
+            (false, _) => None,
+        } {
+            type_vec.push(packet_type);
         }
-        return (is_ch0_p, is_ch1_p, false)
+
+        type_vec
+        
     }
 
-    pub fn get_packet_states(&self, num: usize) -> Vec<(bool, bool, bool)> {
+    pub fn get_packet_states(&self, num: usize) -> Vec<Vec<PacketType>> {
         let mut results = Vec::new();
         for offset in (0..=num-1).rev() {
             let state = self.get_packet_state(offset as u16, num);
@@ -66,13 +83,20 @@ impl TxPartCtler {
 
     pub fn process_packets(&self, mut packets: Vec<PacketStruct>) -> HashMap::<String, Vec<PacketStruct>> {
         let mut part_packets = HashMap::<String, Vec<PacketStruct>>::new();
-        for packet in packets.iter_mut() {
+        
+        // Process packets for the first part
+        let mut i = 0;
+        while i < packets.len() {
             let tx_ipaddr = self.tx_ipaddrs[0].clone();
-            if PacketStruct::channel_info(packet.indicators) == 0 {
-                if part_packets.contains_key(&tx_ipaddr) {
-                    part_packets.get_mut(&tx_ipaddr).unwrap().push(packet.clone());
-                } else {
-                    part_packets.insert(tx_ipaddr, vec![packet.clone()]);
+            match PacketStruct::channel_info(packets[i].indicators) {
+                0 => {
+                    let packet = packets.remove(i);
+                    part_packets.entry(tx_ipaddr)
+                        .or_insert_with(Vec::new)
+                        .push(packet);
+                }
+                _ => {
+                    i += 1;
                 }
             }
         }
@@ -80,14 +104,18 @@ impl TxPartCtler {
         if self.tx_parts.len() < 2 {
             return part_packets;
         }
+
         // Process packets for the second part
-        for packet in packets.iter_mut().rev() {
+        let mut i = packets.len();
+        while i > 0 {
+            i -= 1;
             let tx_ipaddr = self.tx_ipaddrs[1].clone();
-            if PacketStruct::channel_info(packet.indicators) == 1 {
-                if part_packets.contains_key(&tx_ipaddr) {
-                    part_packets.get_mut(&tx_ipaddr).unwrap().push(packet.clone());
-                } else {
-                    part_packets.insert(tx_ipaddr, vec![packet.clone()]);
+            match PacketStruct::channel_info(packets[i].indicators) {
+                _ => {
+                    let packet = packets.remove(i);
+                    part_packets.entry(tx_ipaddr)
+                        .or_insert_with(Vec::new)
+                        .push(packet);
                 }
             }
         }

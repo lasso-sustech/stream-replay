@@ -17,6 +17,17 @@ pub unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
     )
 }
 
+pub enum PacketType {
+    SNL,
+    SL,
+    DFN,
+    DFL,
+    DSS,
+    DSF,
+    DSM,
+    DSL
+}
+
 #[repr(C,packed)]
 #[derive(Copy, Clone, Debug)]
 pub struct PacketStruct {
@@ -44,21 +55,34 @@ impl PacketStruct {
         self.offset -= 1;
     }
 
-    pub fn set_channel0(&mut self) {
-        self.indicators |= 0b00000001;
+    pub fn set_indicator(&mut self, packet_type: PacketType) {
+        match packet_type {
+            PacketType::SNL => self.indicators = 0b00000000,
+            PacketType::SL => self.indicators  = 0b00000001,
+            PacketType::DFN => self.indicators = 0b00000010,
+            PacketType::DFL => self.indicators = 0b00000011,
+            PacketType::DSS => self.indicators = 0b00000100,
+            PacketType::DSF => self.indicators = 0b00000101,
+            PacketType::DSM => self.indicators = 0b00000110,
+            PacketType::DSL => self.indicators = 0b00000111,
+        }
     }
-    pub fn set_channel1(&mut self) {
-        self.indicators &= 0b11111110;
-    }
-    pub fn set_channel_last_packet(&mut self) {
-        self.indicators |= 0b00000010;
-    }
-    pub fn clear_channel(&mut self) {
-        self.indicators &= 0b11111100;
+    pub fn get_packet_type(indicators: u8) -> PacketType {
+        match indicators {
+            0b00000000 => PacketType::SNL,
+            0b00000001 => PacketType::SL,
+            0b00000010 => PacketType::DFN,
+            0b00000011 => PacketType::DFL,
+            0b00000100 => PacketType::DSS,
+            0b00000101 => PacketType::DSF,
+            0b00000110 => PacketType::DSM,
+            0b00000111 => PacketType::DSL,
+            _ => panic!("Invalid packet type")
+        }
     }
 
-    pub fn channel_info( indicators: u8) -> u8 {
-        indicators & 0b00000001
+    pub fn channel_info(indicator: u8) -> u8{
+        (indicator & 0b00000100) >> 2
     }
 
     pub fn from_buffer(buffer: &[u8]) -> Self {
