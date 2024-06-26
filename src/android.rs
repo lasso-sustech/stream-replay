@@ -188,7 +188,9 @@ pub extern "system" fn Java_com_github_magicsih_androidscreencaster_service_Rust
     port: u16, duration: u32, calc_rtt: bool, rx_mode: bool
 )
 {
-    start_rx(port, duration, calc_rtt, rx_mode);
+    std::thread::spawn(move || {
+        start_rx(port, duration, calc_rtt, rx_mode);
+    });
 }
 
 #[cfg(target_os="android")]
