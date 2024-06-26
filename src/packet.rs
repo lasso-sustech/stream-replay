@@ -35,7 +35,7 @@ pub struct PacketStruct {
     pub offset: u16,    //2 Bytes, how much left to send
     pub length: u16,    //2 Bytes
     pub port: u16,      //2 Bytes
-    pub indicators: u8, //1 byte, 0 - 1 represents the interface id, 10~19 represents the last packet of interface id 
+    pub indicators: u8, //1 Byte, 0 - 1 represents the interface id, 10~19 represents the last packet of interface id 
     pub timestamp: f64, //8 Bytes
     pub payload: [u8; MAX_PAYLOAD_LEN]
 }
@@ -94,7 +94,7 @@ impl PacketStruct {
         let timestamp = f64::from_le_bytes(buffer[11..19].try_into().unwrap());
         
         let mut payload = [0u8; MAX_PAYLOAD_LEN];
-        payload[0..length as usize-19].copy_from_slice(&buffer[19..length as usize]);
+        payload[0..length as usize].copy_from_slice(&buffer[19..length as usize + 19]);
 
         PacketStruct {
             seq,
