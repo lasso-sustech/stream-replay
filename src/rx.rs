@@ -1,7 +1,8 @@
 mod packet;
 use std::collections::HashMap;
 use std::net::UdpSocket;
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{Sender};
+use std::sync::{mpsc, Arc, Mutex};
 use clap::Parser;
 use packet::PacketType;
 use std::io::ErrorKind;
@@ -70,6 +71,7 @@ struct RecvData{
     recv_records: HashMap<u32, RecvRecord>,
     data_len: u32,
     rx_start_time: f64,
+    tx: Option<Sender<Vec<u8>>>
 }
 
 impl RecvData{
@@ -78,6 +80,7 @@ impl RecvData{
             recv_records: HashMap::new(),
             data_len: 0,
             rx_start_time: 0.0,
+            tx: None,
         }
     }
 }
@@ -86,6 +89,9 @@ fn main() {
     let args = Args::parse();
     let recv_data = Arc::new(Mutex::new(RecvData::new()));
     let recv_data_final = Arc::clone(&recv_data);
+    
+    let (tx, _rx) = mpsc::channel::<Vec<u8>>();
+    recv_data.lock().unwrap().tx = Some(tx);
 
     // Extract duration from args
     let duration = args.duration;
@@ -112,7 +118,6 @@ fn main() {
 }
 
 fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mutex<bool>>){
-    let rx_mode = args.rx_mode;
     let addr = format!("0.0.0.0:{}", args.port);    
     let socket = UdpSocket::bind(&addr).unwrap();
     socket.set_nonblocking(true).unwrap();
@@ -130,13 +135,12 @@ fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mutex<bo
             data.data_len += _len as u32;
             data.rx_start_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
 
-            if !args.calc_rtt {
-                break;
-            }
-
-            if rx_mode {
-                let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
-                data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);                
+            match (args.calc_rtt, args.rx_mode) {
+                (true, true) => {
+                    let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
+                    data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);          
+                },
+                _ => {}
             }
 
             break;
@@ -152,17 +156,22 @@ fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mutex<bo
             let mut data = recv_params.lock().unwrap();
             data.data_len += _len as u32;
 
-            if !args.calc_rtt {
-                continue;
-            }
-            
-            if rx_mode {
-                let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
-                data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);               
-                if data.recv_records[&seq].complete() {
-                    data.recv_records[&seq].gather();
-                    data.recv_records.remove(&seq);
-                }
+            match (args.calc_rtt, args.rx_mode) {
+                (true, true) => {
+                    let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
+                    data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);               
+                    if data.recv_records[&seq].complete() {
+                        let gathered_data = data.recv_records[&seq].gather();
+                        data.recv_records.remove(&seq);
+                        if let Some(tx) = &data.tx {
+                            tx.send(gathered_data).unwrap();
+                        }
+                    }
+                },
+                (false, _) => {
+                    continue;
+                },
+                _ => {}
             }
 
             let indicator = u8::from_le_bytes(buffer[10..11].try_into().unwrap());
