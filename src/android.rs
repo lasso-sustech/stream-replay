@@ -21,6 +21,19 @@ use ndk::asset::AssetManager;
 pub static mut ASSET_MANAGER: Option<AssetManager> = None;
 pub static mut SENDER_MAP: Option<HashMap<String, BufferSender>> = None;
 
+fn logging(s: String) {
+    use std::ffi::CString;
+    let s = CString::new(s).unwrap();
+    let tag = CString::new("RustStreamReplay").unwrap();
+    unsafe {
+        ndk_sys::__android_log_print(
+            ndk_sys::android_LogPriority::ANDROID_LOG_INFO.0.try_into().unwrap(),
+            tag.as_ptr(),
+            s.as_ptr()
+        );
+    }
+}
+
 #[cfg(target_os="android")]
 #[no_mangle]
 pub extern "C" fn start_tx(
@@ -70,8 +83,9 @@ pub extern "C" fn start_tx(
     let streams:Vec<_> = manifest.streams.into_iter().filter_map( |x| x.validate(None, duration) ).collect();
     let window_size = manifest.window_size;
     let orchestrator = manifest.orchestrator;
-    println!("Sliding Window Size: {}.", window_size);
-    println!("Orchestrator: {:?}.", orchestrator);
+
+    logging( format!("Sliding Window Size: {}.", window_size) );
+    logging( format!("Orchestrator: {:?}.", orchestrator) );
 
     // start broker
     let mut broker = GlobalBroker::new( orchestrator);
@@ -135,14 +149,15 @@ pub extern "C" fn start_rx(
     let data_len = recv_data_final.lock().unwrap().data_len;
     let rx_duration = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() - recv_data_final.lock().unwrap().rx_start_time;
 
-    println!("Received Bytes: {:.3} MB", data_len as f64/ 1024.0 / 1024.0);
-    println!("Average Throughput: {:.3} Mbps", data_len as f64 / rx_duration / 1e6 * 8.0);
+    logging( format!("Received Bytes: {:.3} MB", data_len as f64/ 1024.0 / 1024.0) );
+    logging( format!("Average Throughput: {:.3} Mbps", data_len as f64 / rx_duration / 1e6 * 8.0) );
 }
 
 #[cfg(target_os="android")]
 #[allow(non_snake_case)]
 #[allow(dead_code)]
-pub extern "system" fn Java_com_github_magicsih_androidscreencaster_RustStreamReplay_start_tx(
+#[no_mangle]
+pub extern "system" fn Java_com_github_magicsih_androidscreencaster_service_RustStreamReplay_startTx(
     mut env: JNIEnv, _: JClass,
     asset_manager: JObject,
     manifest_file: JString,
@@ -173,7 +188,8 @@ pub extern "system" fn Java_com_github_magicsih_androidscreencaster_RustStreamRe
 #[cfg(target_os="android")]
 #[allow(non_snake_case)]
 #[allow(dead_code)]
-pub extern "system" fn Java_com_github_magicsih_androidscreencaster_RustStreamReplay_start_rx(
+#[no_mangle]
+pub extern "system" fn Java_com_github_magicsih_androidscreencaster_service_RustStreamReplay_startRx(
     mut _env: JNIEnv, _: JClass,
     port: u16, duration: u32, calc_rtt: bool, rx_mode: bool
 )
@@ -184,7 +200,8 @@ pub extern "system" fn Java_com_github_magicsih_androidscreencaster_RustStreamRe
 #[cfg(target_os="android")]
 #[allow(non_snake_case)]
 #[allow(dead_code)]
-pub extern "system" fn Java_com_github_magicsih_androidscreencaster_RustStreamReplay_send(
+#[no_mangle]
+pub extern "system" fn Java_com_github_magicsih_androidscreencaster_service_RustStreamReplay_send(
     mut env: JNIEnv, _: JClass,
     name: JString,
     buffer: JByteArray,
