@@ -190,7 +190,7 @@ pub struct SourceManager{
 impl SourceManager {
     pub fn new(stream: StreamParam, window_size:usize, broker:&mut GlobalBroker) -> Self {
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = stream;
-        let name = stream.name();
+        let mut name = stream.name();
         let (tx, blocked_signal, tx_part_ctler) = broker.add(params.clone());
         let tx = [tx].into();
         
@@ -207,6 +207,7 @@ impl SourceManager {
         let stop_timestamp = SystemTime::now();
 
         let (source, dest) = if params.npy_file.starts_with(STREAM_PROTO) {
+            name = params.npy_file.clone();
             let (tx, rx) = channel();
             (vec![tx], vec![rx])
         } else {

@@ -19,7 +19,7 @@ use ndk::asset::AssetManager;
 pub static mut ASSET_MANAGER: Option<AssetManager> = None;
 pub static mut SENDER_MAP: Option<HashMap<String, BufferSender>> = None;
 
-fn logging(s: &str) {
+pub fn logging(s: &str) {
     use std::ffi::CString;
     let s = CString::new(s).unwrap();
     let tag = CString::new("RustStreamReplay").unwrap();
@@ -33,6 +33,7 @@ fn logging(s: &str) {
 }
 
 #[cfg(target_os="android")]
+#[no_mangle]
 fn start_tx(
     manifest_file: String,
     ipaddr1_tx: String, ipaddr1_rx: String,
@@ -100,9 +101,9 @@ fn start_tx(
 
     // start global IPC
     let ipc = IPCDaemon::new( sources, ipc_port, String::from("0.0.0.0"));
-    ipc.start_loop( duration );
-
-    // std::process::exit(0); //force exit
+    std::thread::spawn(move || {
+        ipc.start_loop(duration);
+    });
 }
 
 #[cfg(target_os="android")]
@@ -207,5 +208,10 @@ pub extern "system" fn Java_com_github_magicsih_androidscreencaster_service_Rust
 
     let buffer: Vec<u8> = env.convert_byte_array(buffer).expect("invalid buffer array").to_vec();
 
-    sender.send(buffer).unwrap();
+    match sender.send(buffer) {
+        Ok(_) => {},
+        Err(e) => {
+            logging(&format!("Error sending buffer: {:?}", e));
+        }
+    }
 }
