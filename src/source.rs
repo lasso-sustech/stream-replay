@@ -115,10 +115,10 @@ pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
 
             // 1. generate packets
             let mut packets = Vec::new();
-            let (_num, _remains) = (size_bytes/UDP_MAX_LENGTH, size_bytes%UDP_MAX_LENGTH);
+            let (_num, _remains) = (size_bytes/MAX_PAYLOAD_LEN, size_bytes%MAX_PAYLOAD_LEN); 
             let num = _num + if _remains > 0 { 1 } else { 0 };
             template.next_seq(_num, _remains);
-            template.set_length(UDP_MAX_LENGTH as u16);
+            template.set_length(MAX_PAYLOAD_LEN as u16);
             let mut packet_states = tx_part_ctler.lock().unwrap().get_packet_states(num);
             for idx in 0..num {
                 template.next_offset();
