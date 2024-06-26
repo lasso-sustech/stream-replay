@@ -1,5 +1,3 @@
-use std::os::raw::c_char;
-use std::ffi::CStr;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use serde_json;
@@ -21,7 +19,7 @@ use ndk::asset::AssetManager;
 pub static mut ASSET_MANAGER: Option<AssetManager> = None;
 pub static mut SENDER_MAP: Option<HashMap<String, BufferSender>> = None;
 
-fn logging(s: String) {
+fn logging(s: &str) {
     use std::ffi::CString;
     let s = CString::new(s).unwrap();
     let tag = CString::new("RustStreamReplay").unwrap();
@@ -35,11 +33,10 @@ fn logging(s: String) {
 }
 
 #[cfg(target_os="android")]
-#[no_mangle]
-pub extern "C" fn start_tx(
-    manifest_file: *const c_char,
-    ipaddr1_tx: *const c_char, ipaddr1_rx: *const c_char,
-    ipaddr2_tx: *const c_char, ipaddr2_rx: *const c_char,
+fn start_tx(
+    manifest_file: String,
+    ipaddr1_tx: String, ipaddr1_rx: String,
+    ipaddr2_tx: String, ipaddr2_rx: String,
     duration: f64,
     ipc_port: u16,
 )
@@ -49,12 +46,6 @@ pub extern "C" fn start_tx(
             SENDER_MAP = Some(HashMap::new());
         }
     }
-
-    let manifest_file: String = unsafe { CStr::from_ptr(manifest_file).to_string_lossy().into_owned() };
-    let ipaddr1_tx: String = unsafe { CStr::from_ptr(ipaddr1_tx).to_string_lossy().into_owned() };
-    let ipaddr2_tx: String = unsafe { CStr::from_ptr(ipaddr2_tx).to_string_lossy().into_owned() };
-    let ipaddr1_rx: String = unsafe { CStr::from_ptr(ipaddr1_rx).to_string_lossy().into_owned() };
-    let ipaddr2_rx: String = unsafe { CStr::from_ptr(ipaddr2_rx).to_string_lossy().into_owned() };
 
     //load the manifest file
     let asset_path = std::ffi::CString::new(manifest_file).unwrap();
@@ -66,6 +57,7 @@ pub extern "C" fn start_tx(
         }
     };
     let mut manifest:Manifest = serde_json::from_reader(asset_reader).unwrap();
+
     //update manifest file
     manifest.tx_ipaddrs = vec![ipaddr1_tx.clone(), ipaddr2_tx.clone()];
     manifest.streams.iter_mut().for_each(|stream| {
@@ -84,8 +76,8 @@ pub extern "C" fn start_tx(
     let window_size = manifest.window_size;
     let orchestrator = manifest.orchestrator;
 
-    logging( format!("Sliding Window Size: {}.", window_size) );
-    logging( format!("Orchestrator: {:?}.", orchestrator) );
+    logging( &format!("Sliding Window Size: {}.", window_size) );
+    logging( &format!("Orchestrator: {:?}.", orchestrator) );
 
     // start broker
     let mut broker = GlobalBroker::new( orchestrator);
@@ -149,8 +141,8 @@ pub extern "C" fn start_rx(
     let data_len = recv_data_final.lock().unwrap().data_len;
     let rx_duration = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() - recv_data_final.lock().unwrap().rx_start_time;
 
-    logging( format!("Received Bytes: {:.3} MB", data_len as f64/ 1024.0 / 1024.0) );
-    logging( format!("Average Throughput: {:.3} Mbps", data_len as f64 / rx_duration / 1e6 * 8.0) );
+    logging( &format!("Received Bytes: {:.3} MB", data_len as f64/ 1024.0 / 1024.0) );
+    logging( &format!("Average Throughput: {:.3} Mbps", data_len as f64 / rx_duration / 1e6 * 8.0) );
 }
 
 #[cfg(target_os="android")]
@@ -176,11 +168,12 @@ pub extern "system" fn Java_com_github_magicsih_androidscreencaster_service_Rust
         };
     };
 
-    let manifest_file = env.get_string(&manifest_file).expect("invalid manifest file string").as_ptr();
-    let ipaddr1_tx = env.get_string(&ipaddr1_tx).expect("invalid ipaddr1_tx string").as_ptr();
-    let ipaddr1_rx = env.get_string(&ipaddr1_rx).expect("invalid ipaddr1_rx string").as_ptr();
-    let ipaddr2_tx = env.get_string(&ipaddr2_tx).expect("invalid ipaddr2_tx string").as_ptr();
-    let ipaddr2_rx = env.get_string(&ipaddr2_rx).expect("invalid ipaddr2_rx string").as_ptr();
+    let manifest_file = env.get_string(&manifest_file).expect("invalid manifest file string").into();
+    let ipaddr1_tx = env.get_string(&ipaddr1_tx).expect("invalid ipaddr1_tx string").into();
+    let ipaddr1_rx = env.get_string(&ipaddr1_rx).expect("invalid ipaddr1_rx string").into();
+
+    let ipaddr2_tx = env.get_string(&ipaddr2_tx).expect("invalid ipaddr2_tx string").into();
+    let ipaddr2_rx = env.get_string(&ipaddr2_rx).expect("invalid ipaddr2_rx string").into();
 
     start_tx(manifest_file, ipaddr1_tx, ipaddr1_rx, ipaddr2_tx, ipaddr2_rx, duration, ipc_port);
 }
