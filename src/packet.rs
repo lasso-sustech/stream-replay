@@ -1,21 +1,36 @@
+#![allow(dead_code)]
 use std::sync::mpsc;
 
 const IP_HEADER_LENGTH:usize = 20;
 const UDP_HEADER_LENGTH:usize = 8;
 pub const APP_HEADER_LENGTH:usize = 19;
 pub const UDP_MAX_LENGTH:usize = 1500 - IP_HEADER_LENGTH - UDP_HEADER_LENGTH;
-const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - APP_HEADER_LENGTH;
+pub const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - APP_HEADER_LENGTH;
 
 pub const STREAM_PROTO: &str = "stream://";
 
 pub type PacketSender   = mpsc::Sender<PacketStruct>;
 pub type PacketReceiver = mpsc::Receiver<PacketStruct>;
 
+pub type BufferSender = mpsc::Sender<Vec<u8>>;
+pub type BufferReceiver = mpsc::Receiver<Vec<u8>>;
+
 pub unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
     ::std::slice::from_raw_parts(
         (p as *const T) as *const u8,
         ::std::mem::size_of::<T>(),
     )
+}
+
+pub enum PacketType {
+    SNL,
+    SL,
+    DFN,
+    DFL,
+    DSS,
+    DSF,
+    DSM,
+    DSL
 }
 
 #[repr(C,packed)]
@@ -41,26 +56,60 @@ impl PacketStruct {
         self.seq += 1;
         self.offset = if remains>0 {num as u16+1} else {num as u16};
     }
-
-    pub fn set_channel0(&mut self) {
-        self.indicators |= 0b00000001;
-    }
-    pub fn set_channel1(&mut self) {
-        self.indicators &= 0b11111110;
-    }
-    pub fn set_channel_last_packet(&mut self) {
-        self.indicators |= 0b00000010;
-    }
-    pub fn clear_channel(&mut self) {
-        self.indicators &= 0b11111100;
-    }
-
-    pub fn channel_info( indicators: u8) -> u8 {
-        indicators & 0b00000001
-    }
-
     pub fn next_offset(&mut self) {
         self.offset -= 1;
+    }
+
+    pub fn set_indicator(&mut self, packet_type: PacketType) {
+        match packet_type {
+            PacketType::SNL => self.indicators = 0b00000000,
+            PacketType::SL => self.indicators  = 0b00000001,
+            PacketType::DFN => self.indicators = 0b00000010,
+            PacketType::DFL => self.indicators = 0b00000011,
+            PacketType::DSS => self.indicators = 0b00000100,
+            PacketType::DSF => self.indicators = 0b00000101,
+            PacketType::DSM => self.indicators = 0b00000110,
+            PacketType::DSL => self.indicators = 0b00000111,
+        }
+    }
+    pub fn get_packet_type(indicators: u8) -> PacketType {
+        match indicators {
+            0b00000000 => PacketType::SNL,
+            0b00000001 => PacketType::SL,
+            0b00000010 => PacketType::DFN,
+            0b00000011 => PacketType::DFL,
+            0b00000100 => PacketType::DSS,
+            0b00000101 => PacketType::DSF,
+            0b00000110 => PacketType::DSM,
+            0b00000111 => PacketType::DSL,
+            _ => panic!("Invalid packet type")
+        }
+    }
+
+    pub fn channel_info(indicator: u8) -> u8{
+        (indicator & 0b00000100) >> 2
+    }
+
+    pub fn from_buffer(buffer: &[u8]) -> Self {
+        let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
+        let offset = u16::from_le_bytes(buffer[4..6].try_into().unwrap());
+        let length = u16::from_le_bytes(buffer[6..8].try_into().unwrap());
+        let port = u16::from_le_bytes(buffer[8..10].try_into().unwrap());
+        let indicators = buffer[10];
+        let timestamp = f64::from_le_bytes(buffer[11..19].try_into().unwrap());
+        
+        let mut payload = [0u8; MAX_PAYLOAD_LEN];
+        payload[0..length as usize-19].copy_from_slice(&buffer[19..length as usize]);
+
+        PacketStruct {
+            seq,
+            offset,
+            length,
+            port,
+            indicators,
+            timestamp,
+            payload,
+        }
     }
 
     pub fn set_payload(&mut self, payload: &[u8]) {

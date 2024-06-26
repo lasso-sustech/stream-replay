@@ -11,6 +11,7 @@ use crate::source::SourceManager;
 use crate::broker::GlobalBroker;
 use crate::packet::*;
 use crate::rx::{recv_thread, RecvData};
+use crate::link::Link;
 
 use jni::JNIEnv;
 use jni::objects::{JClass, JObject, JString, JByteArray};
@@ -18,7 +19,7 @@ use jni::objects::{JClass, JObject, JString, JByteArray};
 use ndk::asset::AssetManager;
 
 pub static mut ASSET_MANAGER: Option<AssetManager> = None;
-pub static mut SENDER_MAP: Option<HashMap<String, PacketSender>> = None;
+pub static mut SENDER_MAP: Option<HashMap<String, BufferSender>> = None;
 
 #[cfg(target_os="android")]
 #[no_mangle]
@@ -40,7 +41,7 @@ pub extern "C" fn start_tx(
     let ipaddr1_tx: String = unsafe { CStr::from_ptr(ipaddr1_tx).to_string_lossy().into_owned() };
     let ipaddr2_tx: String = unsafe { CStr::from_ptr(ipaddr2_tx).to_string_lossy().into_owned() };
     let ipaddr1_rx: String = unsafe { CStr::from_ptr(ipaddr1_rx).to_string_lossy().into_owned() };
-    let _ipaddr2_rx: String = unsafe { CStr::from_ptr(ipaddr2_rx).to_string_lossy().into_owned() };
+    let ipaddr2_rx: String = unsafe { CStr::from_ptr(ipaddr2_rx).to_string_lossy().into_owned() };
 
     //load the manifest file
     let asset_path = std::ffi::CString::new(manifest_file).unwrap();
@@ -57,7 +58,10 @@ pub extern "C" fn start_tx(
     manifest.streams.iter_mut().for_each(|stream| {
         match stream {
             StreamParam::TCP(param) | StreamParam::UDP(param) => {
-                param.tx_ipaddrs = vec![ipaddr1_tx.clone(), ipaddr2_tx.clone()];
+                param.links = vec![
+                    Link{ tx_ipaddr: ipaddr1_tx.clone(), rx_ipaddr: ipaddr1_rx.clone() },
+                    Link{ tx_ipaddr: ipaddr2_tx.clone(), rx_ipaddr: ipaddr2_rx.clone() }
+                ]
             }
         }
     });
@@ -69,18 +73,8 @@ pub extern "C" fn start_tx(
     println!("Sliding Window Size: {}.", window_size);
     println!("Orchestrator: {:?}.", orchestrator);
 
-    // from manifest create a mapping from port to target addr
-    let mut port2ip: HashMap<u16, Vec<String>> = HashMap::new();
-    for stream in &streams {
-        let (port, ip) = match stream {
-            StreamParam::TCP(param) => (param.port.clone(), param.tx_ipaddrs.clone()),
-            StreamParam::UDP(param) => (param.port.clone(), param.tx_ipaddrs.clone())
-        };
-        port2ip.insert(port, ip);
-    }
-
     // start broker
-    let mut broker = GlobalBroker::new( orchestrator, ipaddr1_rx, port2ip);
+    let mut broker = GlobalBroker::new( orchestrator);
     let _handle = broker.start();
 
     // spawn the source thread
@@ -102,7 +96,7 @@ pub extern "C" fn start_tx(
     let ipc = IPCDaemon::new( sources, ipc_port, String::from("0.0.0.0"));
     ipc.start_loop( duration );
 
-    std::process::exit(0); //force exit
+    // std::process::exit(0); //force exit
 }
 
 #[cfg(target_os="android")]
@@ -111,32 +105,37 @@ pub extern "C" fn start_rx(
     port: u16,
     duration: u32,
     calc_rtt: bool,
+    rx_mode: bool,
 )
 {
-    let args = crate::rx::Args { port, duration, calc_rtt };
+    let args = crate::rx::Args { port, duration, calc_rtt, rx_mode };
     let recv_data = Arc::new(Mutex::new(RecvData::new()));
-    let recv_data_thread = Arc::clone(&recv_data);
+    let recv_data_final = Arc::clone(&recv_data);
+    
+    let (tx, _rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    recv_data.lock().unwrap().tx = Some(tx);
 
     // Extract duration from args
-    let duration = args.duration.clone();
+    let duration = args.duration;
     
     let lock = Arc::new(Mutex::new(false));
     let lock_clone = Arc::clone(&lock);
     
     std::thread::spawn(move || {
-        recv_thread(args, recv_data_thread, lock_clone);
+        recv_thread(args, recv_data, lock_clone);
     });
 
-    
     while !*lock.lock().unwrap() {
         std::thread::sleep(std::time::Duration::from_nanos(100_000) );
     }
 
     // Sleep for the duration
     std::thread::sleep(std::time::Duration::from_secs(duration as u64));
-    let data_len = recv_data.lock().unwrap().data_len;
+
+    let data_len = recv_data_final.lock().unwrap().data_len;
+    let rx_duration = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() - recv_data_final.lock().unwrap().rx_start_time;
+
     println!("Received Bytes: {:.3} MB", data_len as f64/ 1024.0 / 1024.0);
-    let rx_duration = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() - recv_data.lock().unwrap().rx_start_time;
     println!("Average Throughput: {:.3} Mbps", data_len as f64 / rx_duration / 1e6 * 8.0);
 }
 
@@ -176,10 +175,10 @@ pub extern "system" fn Java_com_github_magicsih_androidscreencaster_RustStreamRe
 #[allow(dead_code)]
 pub extern "system" fn Java_com_github_magicsih_androidscreencaster_RustStreamReplay_start_rx(
     mut _env: JNIEnv, _: JClass,
-    port: u16, duration: u32, calc_rtt: bool,
+    port: u16, duration: u32, calc_rtt: bool, rx_mode: bool
 )
 {
-    start_rx(port, duration, calc_rtt);
+    start_rx(port, duration, calc_rtt, rx_mode);
 }
 
 #[cfg(target_os="android")]
@@ -197,8 +196,6 @@ pub extern "system" fn Java_com_github_magicsih_androidscreencaster_RustStreamRe
     };
 
     let buffer: Vec<u8> = env.convert_byte_array(buffer).expect("invalid buffer array").to_vec();
-    let mut packet = PacketStruct::new(0);
-    packet.set_payload(&buffer);
 
-    sender.send(packet).unwrap();
+    sender.send(buffer).unwrap();
 }

@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime};
-use std::collections::HashSet;
 use ndarray::prelude::*;
 use ndarray_npy::{read_npy,ReadNpyExt};
 use std::sync::mpsc::channel;
@@ -19,9 +18,64 @@ type GuardedThrottler = Arc<Mutex<RateThrottler>>;
 type GuardedTxPartCtler = Arc<Mutex<TxPartCtler>>;
 
 pub fn stream_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtler, rtt_tx: Option<RttSender>,
-    params: ConnParams, tx:PacketSender, blocked_signal:BlockedSignal, dest: PacketReceiver)
+    params: ConnParams, tx:PacketSender, blocked_signal:BlockedSignal, dest: BufferReceiver)
 {
+    let mut template = PacketStruct::new(params.port);
+    let stop_time  = SystemTime::now().checked_add( Duration::from_secs_f64(params.duration[1]) ).unwrap();
 
+    while SystemTime::now() <= stop_time {
+        // 0. wait for the next packet
+        let buffer = dest.recv().unwrap();
+        let size_bytes = buffer.len();
+
+        // 1. generate packets
+        let mut packets = Vec::new();
+        let (_num, _remains) = (size_bytes/MAX_PAYLOAD_LEN, size_bytes%MAX_PAYLOAD_LEN);
+        let num = _num + if _remains > 0 { 1 } else { 0 };
+        template.next_seq(_num, _remains);
+        template.set_length(MAX_PAYLOAD_LEN as u16);
+        let mut packet_states = tx_part_ctler.lock().unwrap().get_packet_states(num);
+        for idx in 0..num {
+            template.next_offset();
+            if idx == num-1 {
+                template.set_length(_remains as u16);
+                template.set_payload(&buffer[(idx*MAX_PAYLOAD_LEN)..]);
+            } else {
+                template.set_payload(&buffer[(idx*MAX_PAYLOAD_LEN)..((idx+1)*MAX_PAYLOAD_LEN)]);
+            }
+            let packet_types = packet_states.remove(0);
+            for packet_type in packet_types {
+                template.set_indicator(packet_type);
+                packets.push(template.clone());
+            }
+        }
+
+        // 2. append to application-layer queue
+        throttler.lock().unwrap().prepare( packets );
+        // report RTT
+        if let Some(ref r_tx) = rtt_tx {
+            r_tx.send(template.seq).unwrap();
+        }
+
+        // 3. process queue, aware of blocked status
+        while SystemTime::now() < stop_time {
+            let _signal = blocked_signal.lock().unwrap();
+            if !(*_signal) {
+                match throttler.lock().unwrap().try_consume(|mut packet| {
+                    let time_now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
+                    packet.timestamp = time_now;
+                    tx.send(packet).unwrap();
+                    true
+                }) {
+                    Some(_) => continue,
+                    None=> break
+                }
+            }
+        }
+    }
+
+    //reset throttler
+    throttler.lock().unwrap().reset();
 }
 
 pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtler, rtt_tx: Option<RttSender>,
@@ -66,26 +120,17 @@ pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
             template.next_seq(_num, _remains);
             template.set_length(UDP_MAX_LENGTH as u16);
             let mut packet_states = tx_part_ctler.lock().unwrap().get_packet_states(num);
-            for _ in 0.._num {
+            for idx in 0..num {
                 template.next_offset();
-                template.clear_channel();
-                let (is_ch0, is_ch1, is_last) = packet_states.remove(0);
-                if is_ch0   {template.set_channel0()}
-                if is_ch1   {template.set_channel1()}
-                if is_last  {template.set_channel_last_packet()}
-                packets.push( template.clone() );
+                if idx == num-1 {
+                    template.set_length(_remains as u16);
+                }
+                let packet_types = packet_states.remove(0);
+                for packet_type in packet_types {
+                    template.set_indicator(packet_type);
+                    packets.push(template.clone());
+                }
             }
-            if _remains > 0 {
-                template.next_offset();
-                template.set_length(_remains as u16);
-                template.clear_channel();
-                let (is_ch0, is_ch1, is_last) = packet_states.remove(0);
-                if is_ch0   {template.set_channel0()}
-                if is_ch1   {template.set_channel1()}
-                if is_last  {template.set_channel_last_packet()}
-                packets.push( template.clone() );
-            }
-
             // 2. append to application-layer queue
             throttler.lock().unwrap().prepare( packets );
             // report RTT
@@ -128,8 +173,8 @@ pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
 pub struct SourceManager{
     pub name: String,
     stream: StreamParam,
-    pub source: Vec<PacketSender>,
-    dest: Vec<PacketReceiver>,
+    pub source: Vec<BufferSender>,
+    dest: Vec<BufferReceiver>,
     //
     start_timestamp: SystemTime,
     stop_timestamp: SystemTime,
@@ -152,7 +197,7 @@ impl SourceManager {
         let throttler = Arc::new(Mutex::new(
             RateThrottler::new(name.clone(), params.throttle, window_size, params.no_logging, params.loops != usize::MAX)
         ));
-        let link_num = params.tx_ipaddrs.iter().collect::<HashSet<_>>().len() as u16;
+        let link_num = params.links.len() as u16;
         let rtt =  match params.calc_rtt {
             false => None,
             true => Some( RttRecorder::new( &name, params.port, link_num ) )

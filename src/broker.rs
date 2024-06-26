@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::thread::{JoinHandle, sleep, yield_now};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
@@ -39,14 +38,12 @@ fn policy_priority_fifo(all_apps: Vec<GuardedApplications>) {
 
 pub struct GlobalBroker {
     name: Option<String>,
-    ipaddr: String,
-    port2ip: HashMap<u16, Vec<String>>,
     pub dispatcher: UdpDispatcher,
     apps: [GuardedApplications; 4]
 }
 
 impl GlobalBroker {
-    pub fn new(name:Option<String>, ipaddr:String, port2ip: HashMap<u16, Vec<String>> ) -> Self {
+    pub fn new(name:Option<String> ) -> Self {
         let apps = [
             Arc::new(Mutex::new( Vec::<Application>::new() )),
             Arc::new(Mutex::new( Vec::<Application>::new() )),
@@ -55,22 +52,20 @@ impl GlobalBroker {
         ];
         let dispatcher = UdpDispatcher::new();
 
-        Self { name, ipaddr, dispatcher, apps , port2ip }
+        Self { name, dispatcher, apps }
     }
 
     pub fn add(&mut self, param: ConnParams) -> SourceInput {
         let tos = param.tos;
         let priority = param.priority.clone();
-        let tx_ipaddrs = param.tx_ipaddrs.clone();
+        let links = param.links.clone();
         let tx_parts = param.tx_parts.clone();
         let ac = tos2ac( param.tos );
 
         let (broker_tx, blocked_signal, tx_part_ctl) = {
             self.dispatcher.start_new(
-                self.ipaddr.clone(), 
-                self.port2ip.clone(),
+                links,
                 tos, 
-                tx_ipaddrs, 
                 tx_parts
             )
         };
