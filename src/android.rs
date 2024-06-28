@@ -8,17 +8,22 @@ use crate::ipc::IPCDaemon;
 use crate::source::SourceManager;
 use crate::broker::GlobalBroker;
 use crate::packet::*;
-use crate::rx::{recv_thread, RecvData};
+use crate::rx::*;
 use crate::link::Link;
 
 use jni::JNIEnv;
 use jni::objects::{JClass, JObject, JString, JByteArray};
+use jni::sys::jbyteArray;
 
 use ndk::asset::AssetManager;
 
-pub static mut ASSET_MANAGER: Option<AssetManager> = None;
-pub static mut SENDER_MAP: Option<HashMap<String, BufferSender>> = None;
+type GuardedHashMap<K, V> = Arc<Mutex<HashMap<K, V>>>;
 
+pub static mut ASSET_MANAGER: Option<AssetManager> = None;
+pub static mut TX_SENDER_MAP: Option<HashMap<String, BufferSender>> = None;
+pub static mut RX_RECEIVER_MAP: Option<GuardedHashMap<u16, BufferReceiver>> = None;
+
+#[cfg(target_os="android")]
 pub fn logging(s: &str) {
     use std::ffi::CString;
     let s = CString::new(s).unwrap();
@@ -43,8 +48,8 @@ fn start_tx(
 )
 {
     unsafe {
-        if let None = SENDER_MAP {
-            SENDER_MAP = Some(HashMap::new());
+        if let None = TX_SENDER_MAP {
+            TX_SENDER_MAP = Some(HashMap::new());
         }
     }
 
@@ -89,7 +94,7 @@ fn start_tx(
         let src = SourceManager::new(stream, window_size, &mut broker);
         if !src.source.is_empty() {
             unsafe {
-                SENDER_MAP.as_mut().unwrap().insert(src.name.clone(), src.source[0].clone());
+                TX_SENDER_MAP.as_mut().unwrap().insert(src.name.clone(), src.source[0].clone());
             }
         }
         let name = src.name.clone();
@@ -119,8 +124,16 @@ pub extern "C" fn start_rx(
     let recv_data = Arc::new(Mutex::new(RecvData::new()));
     let recv_data_final = Arc::clone(&recv_data);
     
-    let (tx, _rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
     recv_data.lock().unwrap().tx = Some(tx);
+
+    // put the receiver into the global map
+    unsafe {
+        if let None = RX_RECEIVER_MAP {
+            RX_RECEIVER_MAP = Some(Arc::new(Mutex::new(HashMap::new())));
+        }
+        RX_RECEIVER_MAP.as_ref().unwrap().lock().unwrap().insert(port, rx);
+    }
 
     // Extract duration from args
     let duration = args.duration;
@@ -150,7 +163,7 @@ pub extern "C" fn start_rx(
 #[allow(non_snake_case)]
 #[allow(dead_code)]
 #[no_mangle]
-pub extern "system" fn Java_com_github_magicsih_androidscreencaster_service_RustStreamReplay_startTx(
+pub extern "system" fn Java_com_github_lasso_1sustech_androidscreencaster_service_RustStreamReplay_startTx(
     mut env: JNIEnv, _: JClass,
     asset_manager: JObject,
     manifest_file: JString,
@@ -183,7 +196,7 @@ pub extern "system" fn Java_com_github_magicsih_androidscreencaster_service_Rust
 #[allow(non_snake_case)]
 #[allow(dead_code)]
 #[no_mangle]
-pub extern "system" fn Java_com_github_magicsih_androidscreencaster_service_RustStreamReplay_startRx(
+pub extern "system" fn Java_com_github_lasso_1sustech_androidscreencaster_service_RustStreamReplay_startRx(
     mut _env: JNIEnv, _: JClass,
     port: u16, duration: u32, calc_rtt: bool, rx_mode: bool
 )
@@ -197,7 +210,7 @@ pub extern "system" fn Java_com_github_magicsih_androidscreencaster_service_Rust
 #[allow(non_snake_case)]
 #[allow(dead_code)]
 #[no_mangle]
-pub extern "system" fn Java_com_github_magicsih_androidscreencaster_service_RustStreamReplay_send(
+pub extern "system" fn Java_com_github_lasso_1sustech_androidscreencaster_service_RustStreamReplay_send(
     mut env: JNIEnv, _: JClass,
     name: JString,
     buffer: JByteArray,
@@ -205,7 +218,7 @@ pub extern "system" fn Java_com_github_magicsih_androidscreencaster_service_Rust
 {
     let name: String = env.get_string(&name).expect("invalid name string").into();
     let sender = unsafe {
-        SENDER_MAP.as_ref().unwrap().get(&name).unwrap()
+        TX_SENDER_MAP.as_ref().unwrap().get(&name).unwrap()
     };
 
     let buffer: Vec<u8> = env.convert_byte_array(buffer).expect("invalid buffer array").to_vec();
@@ -214,6 +227,32 @@ pub extern "system" fn Java_com_github_magicsih_androidscreencaster_service_Rust
         Ok(_) => {},
         Err(e) => {
             logging(&format!("Error sending buffer: {:?}", e));
+        }
+    }
+}
+
+#[cfg(target_os="android")]
+#[allow(non_snake_case)]
+#[allow(dead_code)]
+#[no_mangle]
+pub extern "system" fn Java_com_github_lasso_1sustech_androidscreencaster_service_RustStreamReplay_recv(
+    env: JNIEnv, _: JClass,
+    port: u16,
+) -> jbyteArray
+{
+    let empty_array = env.new_byte_array(0).expect("invalid byte array");
+
+    match unsafe{ RX_RECEIVER_MAP.as_ref() } {
+        None => empty_array.into_raw(),
+        Some(rx_map) => {
+            match rx_map.lock().expect("rx_map lock failed").get(&port) {
+                None => empty_array.into_raw(),
+                Some(rx) => {
+                    let array: Vec<u8> = rx.try_iter().flatten().collect();
+                    let array = env.byte_array_from_slice(&array).expect("invalid byte array");
+                    array.into_raw()
+                }
+            }
         }
     }
 }

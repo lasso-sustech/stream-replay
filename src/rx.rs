@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::net::UdpSocket;
-use std::sync::mpsc::Sender;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 use clap::Parser;
-use crate::packet::{PacketType, PacketStruct};
+use crate::packet::{BufferSender, PacketStruct, PacketType};
 use std::io::ErrorKind;
 
 const PONG_PORT_INC: u16 = 1024;
@@ -68,7 +67,7 @@ pub struct RecvData{
     recv_records: HashMap<u32, RecvRecord>,
     pub data_len: u32,
     pub rx_start_time: f64,
-    pub tx: Option<Sender<Vec<u8>>>
+    pub tx: Option<BufferSender>
 }
 
 impl RecvData{
@@ -82,12 +81,13 @@ impl RecvData{
     }
 }
 
+#[cfg(not(target_os="android"))]
 fn main() {
     let args = Args::parse();
     let recv_data = Arc::new(Mutex::new(RecvData::new()));
     let recv_data_final = Arc::clone(&recv_data);
     
-    let (tx, _rx) = mpsc::channel::<Vec<u8>>();
+    let (tx, _rx) = std::sync::mpsc::channel::<Vec<u8>>();
     recv_data.lock().unwrap().tx = Some(tx);
 
     // Extract duration from args

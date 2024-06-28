@@ -59,7 +59,6 @@ where T:Sized + Copy
 }
 
 pub struct RateThrottler {
-    pub name: String,
     logger: Option<File>,
     window: CycledVecDequeue<(TIME, SIZE)>,
     buffer: CycledVecDequeue<PacketStruct>,
@@ -87,7 +86,7 @@ impl RateThrottler {
         // let last_rate = Arc::new(Mutex::new( 0.0 ));
         // let throttle = Arc::new(Mutex::new( throttle ));
 
-        Self{ name, logger, window, buffer, throttle, last_rate:0.0,
+        Self{ logger, window, buffer, throttle, last_rate:0.0,
                 sum_bytes:0, acc_error:0, max_error }
     }
 
