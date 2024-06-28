@@ -8,7 +8,7 @@ use crate::ipc::IPCDaemon;
 use crate::source::SourceManager;
 use crate::broker::GlobalBroker;
 use crate::packet::*;
-use crate::rx::*;
+use crate::destination::*;
 use crate::link::Link;
 
 use jni::JNIEnv;
@@ -120,7 +120,7 @@ pub extern "C" fn start_rx(
     rx_mode: bool,
 )
 {
-    let args = crate::rx::Args { port, duration, calc_rtt, rx_mode };
+    let args = Args { port, duration, calc_rtt, rx_mode };
     let recv_data = Arc::new(Mutex::new(RecvData::new()));
     let recv_data_final = Arc::clone(&recv_data);
     
