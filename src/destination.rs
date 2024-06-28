@@ -61,7 +61,7 @@ impl RecvRecord {
         let num_packets = self.packets.len();
         for i in 0..num_packets{
             let packet = self.packets.get(&(i as u16)).unwrap();
-            data.extend_from_slice(&packet.payload[..]);
+            data.extend_from_slice(&packet.payload[ ..packet.length as usize]);
         }
         return data;
     }
