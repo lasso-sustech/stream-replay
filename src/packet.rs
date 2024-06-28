@@ -42,7 +42,10 @@ pub struct PacketStruct {
 
 impl PacketStruct {
     pub fn new(port: u16) -> Self {
-        PacketStruct { seq: 0, offset: 0, length: 0, port, timestamp:0.0, indicators:0 , payload: [32u8; MAX_PAYLOAD_LEN] }
+        // dummy payload content from 0..MAX_PAYLOAD_LEN
+        let mut payload = [0u8; MAX_PAYLOAD_LEN];
+        (0..MAX_PAYLOAD_LEN).for_each(|i| payload[i] = i as u8);
+        PacketStruct { seq: 0, offset: 0, length: 0, port, timestamp:0.0, indicators:0 , payload }
     }
     pub fn set_length(&mut self, length: u16) {
         self.length = length;
@@ -86,24 +89,12 @@ impl PacketStruct {
     }
 
     pub fn from_buffer(buffer: &[u8]) -> Self {
-        let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
-        let offset = u16::from_le_bytes(buffer[4..6].try_into().unwrap());
-        let length = u16::from_le_bytes(buffer[6..8].try_into().unwrap());
-        let port = u16::from_le_bytes(buffer[8..10].try_into().unwrap());
-        let indicators = buffer[10];
-        let timestamp = f64::from_le_bytes(buffer[11..19].try_into().unwrap());
-        
-        let mut payload = [0u8; MAX_PAYLOAD_LEN];
-        payload[0..length as usize].copy_from_slice(&buffer[19..length as usize + 19]);
-
-        PacketStruct {
-            seq,
-            offset,
-            length,
-            port,
-            indicators,
-            timestamp,
-            payload,
+        // usafe to cast buffer to PacketStruct
+        unsafe {
+            let mut packet: PacketStruct = std::mem::zeroed();
+            let packet_ptr = &mut packet as *mut PacketStruct as *mut u8;
+            std::ptr::copy_nonoverlapping(buffer.as_ptr(), packet_ptr, std::mem::size_of::<PacketStruct>());
+            packet
         }
     }
 }

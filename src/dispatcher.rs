@@ -98,8 +98,7 @@ fn socket_thread(sock: UdpSocket, rx:PacketReceiver, blocked_signal:BlockedSigna
             continue;
         }
         for packet in packets.iter() {
-            let length = packet.length as usize;
-            let length = std::cmp::max(length, APP_HEADER_LENGTH);
+            let length = APP_HEADER_LENGTH + packet.length as usize;
             let buf = unsafe{ any_as_u8_slice(packet) };
             loop {
                 addr.set_port( packet.port );
