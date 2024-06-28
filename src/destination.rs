@@ -107,6 +107,13 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                 (true, true) => {
                     let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
                     data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);          //TODO:
+                    if data.recv_records[&seq].complete() {
+                        let gathered_data = data.recv_records[&seq].gather();
+                        data.recv_records.remove(&seq);
+                        if let Some(tx) = &data.tx {
+                            tx.send(gathered_data).unwrap();
+                        }
+                    }
                 },
                 _ => {}
             }
@@ -130,7 +137,6 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                     data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);               
                     if data.recv_records[&seq].complete() {
                         let gathered_data = data.recv_records[&seq].gather();
-                        println!("seq = {}, data_len = {}", seq, gathered_data.len());
                         data.recv_records.remove(&seq);
                         if let Some(tx) = &data.tx {
                             tx.send(gathered_data).unwrap();
