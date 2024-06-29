@@ -87,9 +87,6 @@ impl RecvData{
 }
 
 pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mutex<bool>>){
-    let tmp_sock = UdpSocket::bind("0.0.0.0:0").unwrap();
-    tmp_sock.set_nonblocking(true).unwrap();
-
     let addr = format!("0.0.0.0:{}", args.port);    
     let socket = UdpSocket::bind(&addr).unwrap();
     socket.set_nonblocking(true).unwrap();
@@ -114,10 +111,9 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                     if data.recv_records[&seq].complete() {
                         let gathered_data = data.recv_records[&seq].gather();
                         data.recv_records.remove(&seq);
-                        // if let Some(tx) = &data.tx {
-                        //     tx.send(gathered_data).unwrap();
-                        // }
-                        tmp_sock.send_to(&gathered_data, "127.0.0.1:12345").unwrap();
+                        if let Some(tx) = &data.tx {
+                            tx.send(gathered_data).unwrap();
+                        }
                     }
                 },
                 _ => {}
@@ -143,10 +139,9 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                     if data.recv_records[&seq].complete() {
                         let gathered_data = data.recv_records[&seq].gather();
                         data.recv_records.remove(&seq);
-                        // if let Some(tx) = &data.tx {
-                        //     tx.send(gathered_data).unwrap();
-                        // }
-                        tmp_sock.send_to(&gathered_data, "127.0.0.1:12345").unwrap();
+                        if let Some(tx) = &data.tx {
+                            tx.send(gathered_data).unwrap();
+                        }
                     }
                 },
                 (false, _) => {
