@@ -29,11 +29,10 @@ pub fn stream_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
         let size_bytes = buffer.len();
 
         // 1. generate packets
-        let mut packets = Vec::new();
+        let mut packets: Vec<PacketStruct> = Vec::new();
         let (_num, _remains) = (size_bytes/MAX_PAYLOAD_LEN, size_bytes%MAX_PAYLOAD_LEN);
         let num = _num + if _remains > 0 { 1 } else { 0 };
         template.next_seq(_num, _remains);
-        template.set_length(MAX_PAYLOAD_LEN as u16);
         let mut packet_states = tx_part_ctler.lock().unwrap().get_packet_states(num);
         for idx in 0..num {
             template.next_offset();
@@ -41,7 +40,8 @@ pub fn stream_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
                 template.set_length(_remains as u16);
                 template.set_payload(&buffer[(idx*MAX_PAYLOAD_LEN)..]);
             } else {
-                template.set_payload(&buffer[(idx*MAX_PAYLOAD_LEN)..((idx+1)*MAX_PAYLOAD_LEN)]);
+                template.set_length(MAX_PAYLOAD_LEN as u16);
+                template.set_payload(&buffer[ (idx*MAX_PAYLOAD_LEN) .. ((idx+1)*MAX_PAYLOAD_LEN) ]);
             }
             let packet_types = packet_states.remove(0);
             for packet_type in packet_types {
