@@ -9,6 +9,7 @@ mod socket;
 mod ipc;
 mod tx_part_ctl;
 mod link;
+mod statistic;
 
 use std::collections::HashMap;
 use std::path::Path;

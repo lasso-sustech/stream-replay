@@ -4,7 +4,8 @@ use crate::source::SourceManager;
 
 #[derive(Serialize, Deserialize, Debug,Clone)]
 pub struct Statistics {
-    pub rtt: Vec<f64>,
+    pub rtt: f64,
+    pub channel_rtts: Vec<f64>,
     pub throughput: f64,
 }
 
@@ -48,10 +49,7 @@ impl IPCDaemon {
                     self.sources[name].throttle(*value);
                 }).collect();
                 
-                // reset RTT records for all
-                let _:Vec<_> = self.sources.iter().map(|(_,src)| {
-                    src.reset_rtt_records()
-                }).collect();
+                // TODO: reset RTT records for all
                 //
                 return None;
             },
