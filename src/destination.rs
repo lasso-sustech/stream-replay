@@ -59,8 +59,9 @@ impl RecvRecord {
     fn gather(&self) -> Vec<u8>{
         let mut data = Vec::new();
         let num_packets = self.packets.len();
-        for i in 0..num_packets{
+        for i in (0..num_packets).rev(){
             let packet = self.packets.get(&(i as u16)).unwrap();
+            
             data.extend_from_slice(&packet.payload[ ..packet.length as usize]);
         }
         return data;
