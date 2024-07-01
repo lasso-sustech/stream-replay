@@ -2,6 +2,8 @@
 struct RTTEntry {
     seq: usize,
     rtt: f64,
+    visited: bool,
+    channel_rtt_update_num: usize,
     channel_rtts: Vec<Option<f64>>,
 }
 
@@ -10,13 +12,17 @@ impl RTTEntry {
         RTTEntry {
             seq,
             rtt: 0.0,
+            visited: false,
             channel_rtts: vec![None; max_links],
+            channel_rtt_update_num: 0,
         }
     }
 
     fn update_value(&mut self, channel: usize, value: f64) {
         self.channel_rtts[channel] = Some(value);
-        self.rtt = value // Assume no packet loss
+        self.channel_rtt_update_num += 1;
+        self.rtt = value; // Assume no packet loss
+        self.visited = false;
     }
 }
 
@@ -55,28 +61,38 @@ impl RttRecords {
         }
     }
 
-    pub fn statistic(&self) -> (f64, Vec<f64>) {
+    pub fn statistic(&mut self) -> (f64, Vec<f64>) {
         //get the average rtt and list of average channel rtt
         let mut rtt_sum = 0.0;
         let mut channel_rtts = vec![0.0; self.max_links];
-        let mut count = 0;
-        for entry in &self.queue {
-            if let Some(entry) = entry {
-                count += 1;
-                rtt_sum += entry.rtt;
-                for i in 0..self.max_links {
-                    if let Some(rtt) = entry.channel_rtts[i] {
-                        channel_rtts[i] += rtt;
+        let mut count = vec![0; self.max_links + 1];
+        for entry in &mut self.queue {
+            if let Some(ref mut entry) = entry {
+                if !entry.visited {
+                    // set visited to true to avoid double counting
+                    entry.visited = true;
+                    count[0] += 1;
+                    rtt_sum += entry.rtt;
+                    for (i, rtt_opt) in entry.channel_rtts.iter().enumerate() {
+                        if let Some(rtt) = rtt_opt {
+                            channel_rtts[i] += rtt;
+                            count[i + 1] += 1;
+                        }
                     }
                 }
             }
         }
-        let rtt_avg = if count == 0 {
+        let rtt_avg = if count[0] == 0 {
             0.0
         } else {
-            rtt_sum / count as f64
+            rtt_sum / count[0] as f64
         };
-        let channel_rtts_avg = channel_rtts.iter().map(|&x| x / count as f64).collect();
+        
+        let channel_rtts_avg: Vec<f64> = channel_rtts
+            .iter()
+            .enumerate()
+            .map(|(i, &x)| if count[i + 1] == 0 { 0.0 } else { x / count[i + 1] as f64 })
+            .collect();
         (rtt_avg, channel_rtts_avg)
     }
 }
