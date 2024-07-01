@@ -82,7 +82,7 @@ impl TxPartCtler {
 
     pub fn get_packet_states(&self, num: usize) -> Vec<Vec<PacketType>> {
         let mut results = Vec::new();
-        for offset in (0..=num-1).rev() {
+        for offset in 0..=num-1 {
             let state = self.get_packet_state(offset as u16, num);
             results.push(state);
         }
