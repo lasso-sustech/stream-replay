@@ -19,7 +19,7 @@ pub struct Args {
     pub rx_mode: bool,
 }
 
-struct RecvRecord {
+pub struct RecvRecord {
     packets: HashMap<u16, PacketStruct>, // Use a HashMap to store packets by their offset
     indicators: (bool, bool, bool),
 }
@@ -56,6 +56,7 @@ impl RecvRecord {
         }
         return false;
     }
+    #[allow(dead_code)]
     fn gather(&self) -> Vec<u8>{
         let mut data = Vec::new();
         let num_packets = self.packets.len();
@@ -69,7 +70,8 @@ impl RecvRecord {
 }
 
 pub struct RecvData{
-    recv_records: HashMap<u32, RecvRecord>,
+    pub recv_records: HashMap<u32, RecvRecord>,
+    pub last_seq: u32,
     pub data_len: u32,
     pub rx_start_time: f64,
     pub tx: Option<Sender<Vec<u8>>>
@@ -79,6 +81,7 @@ impl RecvData{
     pub fn new() -> Self{
         Self{
             recv_records: HashMap::new(),
+            last_seq: 0,
             data_len: 0,
             rx_start_time: 0.0,
             tx: None,
@@ -104,19 +107,24 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
             data.data_len += _len as u32;
             data.rx_start_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
 
-            match (args.calc_rtt, args.rx_mode) {
-                (true, true) => {
+            match args.calc_rtt {
+                true => {
                     let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
-                    data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);          //TODO:
-                    if data.recv_records[&seq].complete() {
-                        let gathered_data = data.recv_records[&seq].gather();
+                    data.last_seq = seq;
+                    data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);               
+                    match args.rx_mode {
+                        true => {
+                            if let Some(tx) = &data.tx { 
+                                tx.send(data.recv_records[&seq].gather()).unwrap(); 
+                            }
+                        },
+                        false => {}
+                    }
+                    if data.recv_records[&seq].complete() { //TODO: deal with removing of uncompleted packets
                         data.recv_records.remove(&seq);
-                        if let Some(tx) = &data.tx {
-                            tx.send(gathered_data).unwrap();
-                        }
                     }
                 },
-                _ => {}
+                false => {},
             }
 
             break;
@@ -132,22 +140,24 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
             let mut data = recv_params.lock().unwrap();
             data.data_len += _len as u32;
 
-            match (args.calc_rtt, args.rx_mode) {
-                (true, true) => {
+            match args.calc_rtt {
+                true => {
                     let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
+                    data.last_seq = seq;
                     data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);               
+                    match args.rx_mode {
+                        true => {
+                            if let Some(tx) = &data.tx { 
+                                tx.send(data.recv_records[&seq].gather()).unwrap(); 
+                            }
+                        },
+                        false => {}
+                    }
                     if data.recv_records[&seq].complete() {
-                        let gathered_data = data.recv_records[&seq].gather();
                         data.recv_records.remove(&seq);
-                        if let Some(tx) = &data.tx {
-                            tx.send(gathered_data).unwrap();
-                        }
                     }
                 },
-                (false, _) => {
-                    continue;
-                },
-                _ => {}
+                false => {},
             }
 
             let indicator = u8::from_le_bytes(buffer[10..11].try_into().unwrap());
