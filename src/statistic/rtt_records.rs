@@ -5,7 +5,7 @@ struct RTTEntry {
     seq: usize,
     rtt: f64,
     channel_rtts: Vec<Option<f64>>,
-    visited: bool,
+    visited_rtt: Vec<bool>,
     completed: bool,
 }
 
@@ -15,7 +15,7 @@ impl RTTEntry {
             seq,
             rtt: 0.0,
             channel_rtts: vec![None; max_links],
-            visited: false,
+            visited_rtt: vec![false; max_links],
             completed: false,
         }
     }
@@ -83,18 +83,18 @@ impl RttRecords {
         let mut count = vec![0; self.max_links + 1];
         for entry in &mut self.queue {
             if let Some(ref mut entry) = entry {
-                if !entry.visited && entry.completed{
-                    entry.visited = true;
-                    count[0] += 1;
-                    rtt_sum += entry.rtt;
-                    for (i, rtt_opt) in entry.channel_rtts.iter().enumerate() {
-                        if let Some(rtt) = rtt_opt {
+                count[0] += 1;
+                rtt_sum += entry.rtt;
+                for (i, rtt_opt) in entry.channel_rtts.iter().enumerate() {
+                    if let Some(rtt) = rtt_opt{
+                        if !entry.visited_rtt[i]{
+                            entry.visited_rtt[i] = true;
                             channel_rtts[i] += rtt;
                             count[i + 1] += 1;
                         }
                     }
                 }
-            }
+        }
         }
         let rtt_avg = if count[0] == 0 {
             0.0
