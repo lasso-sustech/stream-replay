@@ -23,12 +23,6 @@ pub struct RttRecorder {
     name: String,
     port: u16,
     pub rtt_records: GuardedRttRecords,
-    mul_link_num: usize,
-}
-
-struct LinkRttCount{
-    link_rcev_count: HashMap<u32, usize>,
-    max_link_num: usize,
 }
 
 fn record_thread(rx: RttReceiver, records: GuardedSeqRecords) {
@@ -39,7 +33,7 @@ fn record_thread(rx: RttReceiver, records: GuardedSeqRecords) {
     }
 }
 
-fn pong_recv_thread(name: String, port: u16, seq_records: GuardedSeqRecords, rtt_records: GuardedRttRecords, tx_ipaddr:String, mut recv_counter: LinkRttCount) {
+fn pong_recv_thread(name: String, port: u16, seq_records: GuardedSeqRecords, rtt_records: GuardedRttRecords, tx_ipaddr:String) {
     let mut buf = [0; 2048];
     let sock = UdpSocket::bind( format!("{}:{}",tx_ipaddr, port)).unwrap();
     let mut logger = File::create( format!("logs/rtt-{}.txt", name) ).unwrap();
@@ -50,18 +44,14 @@ fn pong_recv_thread(name: String, port: u16, seq_records: GuardedSeqRecords, rtt
         let time_now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
         if let Some(last_time) = {
             let mut _records = seq_records.lock().unwrap();
-            let _link_rtt_count = recv_counter.link_rcev_count.entry(seq).or_insert(0);
-            *_link_rtt_count += 1;
-            if *_link_rtt_count == recv_counter.max_link_num  {
-                recv_counter.link_rcev_count.remove(&seq);
-                _records.remove(&seq)
-            }
-            else {
-                _records.get(&seq).cloned()
-            }
+            _records.get(&seq).cloned()
         } {
             let rtt = time_now - last_time;
-            rtt_records.lock().unwrap().update(seq as usize, PacketStruct::channel_info(indicator) as usize, rtt);
+            let is_complete = rtt_records.lock().unwrap().update(seq as usize,  PacketStruct::get_packet_type(indicator), rtt);
+            if is_complete {
+                let mut _records = seq_records.lock().unwrap(); 
+                _records.remove(&seq);
+            }
             let message = format!("{} {:.6} {:.6} \n", seq, rtt, PacketStruct::channel_info(indicator));
             logger.write_all( message.as_bytes() ).unwrap();
         };
@@ -75,7 +65,7 @@ impl RttRecorder {
         let record_handle = None;
         let recv_handle = None;
         let rtt_records = Arc::new(Mutex::new(RttRecords::new(1000, mul_link_num)));
-        RttRecorder{ name, port, record_handle, recv_handle, rtt_records, mul_link_num }
+        RttRecorder{ name, port, record_handle, recv_handle, rtt_records }
     }
 
     pub fn start(&mut self,tx_ipaddr:String) -> RttSender {
@@ -85,13 +75,12 @@ impl RttRecorder {
         let seq_records2 = seq_records1.clone();
         let rtt_records  = Arc::clone(&self.rtt_records);
         
-        let recv_counter = LinkRttCount{ link_rcev_count: HashMap::new(), max_link_num: self.mul_link_num };
 
         self.record_handle = Some(
             thread::spawn(move || { record_thread(rx, seq_records1); })
         );
         self.recv_handle = Some(
-            thread::spawn(move || { pong_recv_thread(name, port, seq_records2, rtt_records, tx_ipaddr, recv_counter ); } )
+            thread::spawn(move || { pong_recv_thread(name, port, seq_records2, rtt_records, tx_ipaddr ); } )
         );
 
         tx

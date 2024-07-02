@@ -1,10 +1,12 @@
+use crate::packet::PacketType;
+
 #[derive(Debug, Clone)]
 struct RTTEntry {
     seq: usize,
     rtt: f64,
-    visited: bool,
-    channel_rtt_update_num: usize,
     channel_rtts: Vec<Option<f64>>,
+    visited: bool,
+    completed: bool,
 }
 
 impl RTTEntry {
@@ -12,17 +14,29 @@ impl RTTEntry {
         RTTEntry {
             seq,
             rtt: 0.0,
-            visited: false,
             channel_rtts: vec![None; max_links],
-            channel_rtt_update_num: 0,
+            visited: false,
+            completed: false,
         }
     }
 
-    fn update_value(&mut self, channel: usize, value: f64) {
-        self.channel_rtts[channel] = Some(value);
-        self.channel_rtt_update_num += 1;
-        self.rtt = value; // Assume no packet loss
-        self.visited = false;
+    fn update_value(&mut self, channel: PacketType, value: f64)  {
+        self.rtt = value;
+        match channel {
+            PacketType::SL => {
+                self.channel_rtts[0] = Some(value);
+                self.completed = true;
+            },
+            PacketType::DFL => {
+                self.channel_rtts[0] = Some(value);
+                self.completed = self.channel_rtts.iter().all(|rtt| rtt.is_some());
+            } 
+            PacketType::DSL => {
+                self.channel_rtts[1] = Some(value);
+                self.completed = self.channel_rtts.iter().all(|rtt| rtt.is_some());
+            },
+            _ => {panic!("Invalid packet type")}
+        }
     }
 }
 
@@ -41,7 +55,7 @@ impl RttRecords {
         }
     }
 
-    pub fn update(&mut self, seq: usize, channel: usize, rtt: f64) {
+    pub fn update(&mut self, seq: usize, channel: PacketType, rtt: f64) -> bool{
         let index = seq % self.max_length;
         // If the entry is already present and seq value is the same, update the value
         // Otherwise, create a new entry
@@ -59,6 +73,7 @@ impl RttRecords {
                 self.queue[index].as_mut().unwrap().update_value(channel, rtt);
             }
         }
+        self.queue[index].as_ref().unwrap().completed
     }
 
     pub fn statistic(&mut self) -> (f64, Vec<f64>) {
@@ -68,8 +83,7 @@ impl RttRecords {
         let mut count = vec![0; self.max_links + 1];
         for entry in &mut self.queue {
             if let Some(ref mut entry) = entry {
-                if !entry.visited {
-                    // set visited to true to avoid double counting
+                if !entry.visited && entry.completed{
                     entry.visited = true;
                     count[0] += 1;
                     rtt_sum += entry.rtt;
