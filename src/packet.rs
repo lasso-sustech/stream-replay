@@ -54,8 +54,8 @@ impl PacketStruct {
         self.seq += 1;
         self.offset = if remains>0 {num as u16+1} else {num as u16};
     }
-    pub fn next_offset(&mut self) {
-        self.offset -= 1;
+    pub fn set_offset(&mut self, offset: u16) {
+        self.offset = offset;
     }
 
     pub fn set_indicator(&mut self, packet_type: PacketType) {

@@ -47,7 +47,7 @@ pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
             template.set_length(MAX_PAYLOAD_LEN as u16);
             let mut packet_states = tx_part_ctler.lock().unwrap().get_packet_states(num);
             for idx in 0..num {
-                template.next_offset();
+                template.set_offset(idx as u16);
                 if idx == num-1 {
                     template.set_length(_remains as u16);
                 }

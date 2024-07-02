@@ -20,15 +20,15 @@ pub struct Args {
 }
 
 pub struct RecvRecord {
-    packets: HashMap<u16, PacketStruct>, // Use a HashMap to store packets by their offset
-    indicators: (bool, bool, bool),
+    pub packets: HashMap<u16, PacketStruct>, // Use a HashMap to store packets by their offset
+    indicators: (bool, bool, bool, bool),
 }
 
 impl RecvRecord {
     fn new() -> Self{
         Self{
             packets: HashMap::<u16, PacketStruct>::new(),
-            indicators: (false, false, false),
+            indicators: (false, false, false, false),
         }
     }
     fn record(&mut self, data: &[u8]){
@@ -37,12 +37,13 @@ impl RecvRecord {
             PacketType::SL => self.indicators.0 = true,
             PacketType::DFL => self.indicators.1 = true,
             PacketType::DSL => self.indicators.2 = true,
+            PacketType::DSF => self.indicators.3 = true,
             _ => {}
         }
         self.packets.insert(packet.offset as u16, packet);
     }
     fn complete(&self) -> bool{
-        if self.indicators.0 || (self.indicators.1 && self.indicators.2) {
+        if self.indicators.0 || (self.indicators.1 && self.indicators.2 && self.indicators.3) {
             let num_packets = self.packets.len();
             if num_packets == 0 {
                 return false; // No packets, return false
@@ -62,7 +63,6 @@ impl RecvRecord {
         let num_packets = self.packets.len();
         for i in (0..num_packets).rev(){
             let packet = self.packets.get(&(i as u16)).unwrap();
-            
             data.extend_from_slice(&packet.payload[ ..packet.length as usize]);
         }
         return data;
@@ -72,6 +72,7 @@ impl RecvRecord {
 pub struct RecvData{
     pub recv_records: HashMap<u32, RecvRecord>,
     pub last_seq: u32,
+    pub recevied: u32,
     pub data_len: u32,
     pub rx_start_time: f64,
     pub tx: Option<Sender<Vec<u8>>>
@@ -82,6 +83,7 @@ impl RecvData{
         Self{
             recv_records: HashMap::new(),
             last_seq: 0,
+            recevied: 0,
             data_len: 0,
             rx_start_time: 0.0,
             tx: None,
@@ -110,7 +112,6 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
             match args.calc_rtt {
                 true => {
                     let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
-                    data.last_seq = seq;
                     data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);               
                     match args.rx_mode {
                         true => {
@@ -122,6 +123,7 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                     }
                     if data.recv_records[&seq].complete() { //TODO: deal with removing of uncompleted packets
                         data.recv_records.remove(&seq);
+                        data.recevied += 1;
                     }
                 },
                 false => {},
@@ -144,7 +146,7 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                 true => {
                     let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
                     data.last_seq = seq;
-                    data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);               
+                    data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);      
                     match args.rx_mode {
                         true => {
                             if let Some(tx) = &data.tx { 
@@ -155,6 +157,7 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                     }
                     if data.recv_records[&seq].complete() {
                         data.recv_records.remove(&seq);
+                        data.recevied += 1;
                     }
                 },
                 false => {},

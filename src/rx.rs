@@ -36,7 +36,7 @@ fn main() {
     println!("Received Bytes: {:.3} MB", data_len as f64/ 1024.0 / 1024.0);
     println!("Average Throughput: {:.3} Mbps", data_len as f64 / rx_duration / 1e6 * 8.0);
     let recv_data = recv_data_final.lock().unwrap();
-    let non_complet_seq = recv_data.recv_records.len() as f64;
-    println!("Packet loss rate: {:.5}", non_complet_seq / recv_data.last_seq as f64);
+    let non_received = recv_data.last_seq - recv_data.recevied;
+    println!("Packet loss rate: {:.5}", non_received as f64 / recv_data.last_seq as f64);
 }
 
