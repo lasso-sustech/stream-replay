@@ -166,7 +166,7 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
 
             let indicator = u8::from_le_bytes(buffer[10..11].try_into().unwrap());
             match PacketStruct::get_packet_type(indicator) {
-                PacketType::SL | PacketType::DFL | PacketType::DSL => {
+                PacketType::SL | PacketType::DFL | PacketType::DSL | PacketType::DSS  => {
                     let ping_addr = format!("{}:{}", src_addr.ip(), args.port + PONG_PORT_INC);
                     buffer[18..19].copy_from_slice(( indicator ).to_le_bytes().as_ref());
                     loop {
