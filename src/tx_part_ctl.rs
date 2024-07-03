@@ -46,7 +46,7 @@ impl TxPartCtler {
         let tx_part_ch0 = self.tx_parts[0] * num as f64;
         let tx_part_ch1 = self.tx_parts[1] * num as f64;
 
-        if ( 0 as f64 >= tx_part_ch1) || ( ( (num - 1) as f64 ) < tx_part_ch0  ) {
+        if ( 0 as f64 > tx_part_ch1) || ( ( (num - 1) as f64 ) <= tx_part_ch0  ) {
             if offset == (num as u16 - 1) {
                 return vec![PacketType::SL];
             }
