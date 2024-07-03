@@ -121,7 +121,7 @@ pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
             template.set_length(MAX_PAYLOAD_LEN as u16);
             let mut packet_states = tx_part_ctler.lock().unwrap().get_packet_states(num);
             for idx in 0..num {
-                template.next_offset();
+                template.set_offset(idx as u16);
                 if idx == num-1 {
                     template.set_length(_remains as u16);
                 }
@@ -197,7 +197,7 @@ impl SourceManager {
         let throttler = Arc::new(Mutex::new(
             RateThrottler::new(name.clone(), params.throttle, window_size, params.no_logging, params.loops != usize::MAX)
         ));
-        let link_num = params.links.len() as u16;
+        let link_num = params.links.len();
         let rtt =  match params.calc_rtt {
             false => None,
             true => Some( RttRecorder::new( &name, params.port, link_num ) )
@@ -229,19 +229,6 @@ impl SourceManager {
         }
     }
 
-    pub fn reset_rtt_records(&self) {
-        if let Some(ref rtt) = self.rtt {
-            if let Ok(mut records) = rtt.rtt_records.lock() {
-                records.iter_mut().for_each(|(count,val)|
-                {
-                    *count = 0;
-                    *val = 0.0;
-                }
-            ) 
-            }
-        }
-    }
-
     pub fn statistics(&self) -> Option<Statistics> {
         let _now = SystemTime::now();
         if _now<self.start_timestamp || _now>self.stop_timestamp {
@@ -255,25 +242,14 @@ impl SourceManager {
             }
         };
 
-        let rtt = {
-            match &self.rtt {
-                None => vec![0.0],
-                Some(recorder) => match recorder.rtt_records.lock() {
-                    Err(_) => return None,
-                    Ok(vals) => {
-                        let mut rtt = Vec::new();
-                        for (count,val) in vals.iter() {
-                            if *count > 0 {
-                                rtt.push( *val/(*count as f64) );
-                            }
-                        }
-                        rtt
-                    }
-                }
+        let (rtt, channel_rtts) = {
+            match self.rtt {
+                None => return None,
+                Some(ref rtt) => rtt.rtt_records.lock().unwrap().statistic()
             }
         };
         
-        Some( Statistics{rtt,throughput} )
+        Some( Statistics{rtt, channel_rtts,throughput} )
     }
 
     pub fn start(&mut self, index:usize, tx_ipaddr:String) -> JoinHandle<()> {

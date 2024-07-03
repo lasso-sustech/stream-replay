@@ -19,16 +19,16 @@ pub struct Args {
     pub rx_mode: bool,
 }
 
-struct RecvRecord {
-    packets: HashMap<u16, PacketStruct>, // Use a HashMap to store packets by their offset
-    indicators: (bool, bool, bool),
+pub struct RecvRecord {
+    pub packets: HashMap<u16, PacketStruct>, // Use a HashMap to store packets by their offset
+    indicators: (bool, bool, bool, bool),
 }
 
 impl RecvRecord {
     fn new() -> Self{
         Self{
             packets: HashMap::<u16, PacketStruct>::new(),
-            indicators: (false, false, false),
+            indicators: (false, false, false, false),
         }
     }
     fn record(&mut self, data: &[u8]){
@@ -37,12 +37,13 @@ impl RecvRecord {
             PacketType::SL => self.indicators.0 = true,
             PacketType::DFL => self.indicators.1 = true,
             PacketType::DSL => self.indicators.2 = true,
+            PacketType::DSF => self.indicators.3 = true,
             _ => {}
         }
         self.packets.insert(packet.offset as u16, packet);
     }
     fn complete(&self) -> bool{
-        if self.indicators.0 || (self.indicators.1 && self.indicators.2) {
+        if self.indicators.0 || (self.indicators.1 && self.indicators.2 && self.indicators.3) {
             let num_packets = self.packets.len();
             if num_packets == 0 {
                 return false; // No packets, return false
@@ -56,12 +57,12 @@ impl RecvRecord {
         }
         return false;
     }
+    #[allow(dead_code)]
     fn gather(&self) -> Vec<u8>{
         let mut data = Vec::new();
         let num_packets = self.packets.len();
         for i in (0..num_packets).rev(){
             let packet = self.packets.get(&(i as u16)).unwrap();
-            
             data.extend_from_slice(&packet.payload[ ..packet.length as usize]);
         }
         return data;
@@ -69,7 +70,9 @@ impl RecvRecord {
 }
 
 pub struct RecvData{
-    recv_records: HashMap<u32, RecvRecord>,
+    pub recv_records: HashMap<u32, RecvRecord>,
+    pub last_seq: u32,
+    pub recevied: u32,
     pub data_len: u32,
     pub rx_start_time: f64,
     pub tx: Option<Sender<Vec<u8>>>
@@ -79,6 +82,8 @@ impl RecvData{
     pub fn new() -> Self{
         Self{
             recv_records: HashMap::new(),
+            last_seq: 0,
+            recevied: 0,
             data_len: 0,
             rx_start_time: 0.0,
             tx: None,
@@ -104,19 +109,24 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
             data.data_len += _len as u32;
             data.rx_start_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
 
-            match (args.calc_rtt, args.rx_mode) {
-                (true, true) => {
+            match args.calc_rtt {
+                true => {
                     let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
-                    data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);          //TODO:
-                    if data.recv_records[&seq].complete() {
-                        let gathered_data = data.recv_records[&seq].gather();
+                    data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);               
+                    match args.rx_mode {
+                        true => {
+                            if let Some(tx) = &data.tx { 
+                                tx.send(data.recv_records[&seq].gather()).unwrap(); 
+                            }
+                        },
+                        false => {}
+                    }
+                    if data.recv_records[&seq].complete() { //TODO: deal with removing of uncompleted packets
                         data.recv_records.remove(&seq);
-                        if let Some(tx) = &data.tx {
-                            tx.send(gathered_data).unwrap();
-                        }
+                        data.recevied += 1;
                     }
                 },
-                _ => {}
+                false => {},
             }
 
             break;
@@ -132,22 +142,25 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
             let mut data = recv_params.lock().unwrap();
             data.data_len += _len as u32;
 
-            match (args.calc_rtt, args.rx_mode) {
-                (true, true) => {
+            match args.calc_rtt {
+                true => {
                     let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
-                    data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);               
+                    data.last_seq = seq;
+                    data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);      
+                    match args.rx_mode {
+                        true => {
+                            if let Some(tx) = &data.tx { 
+                                tx.send(data.recv_records[&seq].gather()).unwrap(); 
+                            }
+                        },
+                        false => {}
+                    }
                     if data.recv_records[&seq].complete() {
-                        let gathered_data = data.recv_records[&seq].gather();
                         data.recv_records.remove(&seq);
-                        if let Some(tx) = &data.tx {
-                            tx.send(gathered_data).unwrap();
-                        }
+                        data.recevied += 1;
                     }
                 },
-                (false, _) => {
-                    continue;
-                },
-                _ => {}
+                false => {},
             }
 
             let indicator = u8::from_le_bytes(buffer[10..11].try_into().unwrap());

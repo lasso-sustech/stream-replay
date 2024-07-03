@@ -11,6 +11,7 @@ mod tx_part_ctl;
 mod destination;
 mod android;
 mod link;
+mod statistic;
 
 use std::collections::HashMap;
 use std::path::Path;
