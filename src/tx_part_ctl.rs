@@ -46,7 +46,7 @@ impl TxPartCtler {
         let tx_part_ch0 = self.tx_parts[0] * num as f64;
         let tx_part_ch1 = self.tx_parts[1] * num as f64;
 
-        if ( 0 as f64 > tx_part_ch1) || ( ( (num - 1) as f64 ) <= tx_part_ch0  ) {
+        if ( 0 as f64 >= tx_part_ch1) || ( ( (num - 1) as f64 ) < tx_part_ch0  ) {
             if offset == (num as u16 - 1) {
                 return vec![PacketType::SL];
             }
@@ -54,11 +54,11 @@ impl TxPartCtler {
         }
 
         let offset = offset as f64;
-        let is_ch0 = offset <= tx_part_ch0;
-        let is_ch1 = offset >  tx_part_ch1;
-        let is_last_ch0 = offset >  (tx_part_ch0 - 1.0);
+        let is_ch0 = offset < tx_part_ch0;
+        let is_ch1 = offset >=  tx_part_ch1;
+        let is_last_ch0 = offset >=  (tx_part_ch0 - 1.0);
         let is_first_ch1= offset == (num as f64  - 1.0);
-        let is_last_ch1 = offset <= (tx_part_ch1 + 1.0);
+        let is_last_ch1 = offset < (tx_part_ch1 + 1.0);
         
         let mut type_vec = Vec::<PacketType>::new();
         if let Some(packet_type) = match (is_ch0, is_last_ch0) {
