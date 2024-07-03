@@ -56,8 +56,8 @@ impl TxPartCtler {
         let offset = offset as f64;
         let is_ch0 = offset <= tx_part_ch0;
         let is_ch1 = offset >  tx_part_ch1;
-        let is_last_ch0 = offset > (tx_part_ch0 - 1.0);
-        let is_first_ch1= offset == num as f64 - 1.0;
+        let is_last_ch0 = offset >  (tx_part_ch0 - 1.0);
+        let is_first_ch1= offset == (num as f64  - 1.0);
         let is_last_ch1 = offset <= (tx_part_ch1 + 1.0);
         
         let mut type_vec = Vec::<PacketType>::new();

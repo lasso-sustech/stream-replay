@@ -34,10 +34,11 @@ impl RecvRecord {
     fn record(&mut self, data: &[u8]){
         let packet = PacketStruct::from_buffer(data);
         match PacketStruct::get_packet_type(packet.indicators) {
-            PacketType::SL => self.indicators.0 = true,
-            PacketType::DFL => self.indicators.1 = true,
-            PacketType::DSL => self.indicators.2 = true,
-            PacketType::DSF => self.indicators.3 = true,
+            PacketType::SL  => {self.indicators.0 = true;},
+            PacketType::DFL => {self.indicators.1 = true;},
+            PacketType::DSL => {self.indicators.2 = true;},
+            PacketType::DSF => {self.indicators.3 = true;},
+            PacketType::DSS => {self.indicators.2 = true; self.indicators.3 = true;},
             _ => {}
         }
         self.packets.insert(packet.offset as u16, packet);
@@ -61,7 +62,7 @@ impl RecvRecord {
     fn gather(&self) -> Vec<u8>{
         let mut data = Vec::new();
         let num_packets = self.packets.len();
-        for i in (0..num_packets).rev(){
+        for i in 0..num_packets{
             let packet = self.packets.get(&(i as u16)).unwrap();
             data.extend_from_slice(&packet.payload[ ..packet.length as usize]);
         }
@@ -115,8 +116,8 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                     data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);               
                     match args.rx_mode {
                         true => {
-                            if let Some(tx) = &data.tx { 
-                                tx.send(data.recv_records[&seq].gather()).unwrap(); 
+                            if data.recv_records[&seq].complete() {
+                                let res = data.recv_records[&seq].gather();
                             }
                         },
                         false => {}
@@ -149,8 +150,8 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                     data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);      
                     match args.rx_mode {
                         true => {
-                            if let Some(tx) = &data.tx { 
-                                tx.send(data.recv_records[&seq].gather()).unwrap(); 
+                            if data.recv_records[&seq].complete() {
+                                let res = data.recv_records[&seq].gather();
                             }
                         },
                         false => {}
