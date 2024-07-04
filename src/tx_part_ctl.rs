@@ -63,16 +63,16 @@ impl TxPartCtler {
         let mut type_vec = Vec::<PacketType>::new();
         if let Some(packet_type) = match (is_ch0, is_last_ch0) {
             (true, false) => Some(PacketType::DFN),
-            (true, true) => Some(PacketType::DFL),
-            (false, _) => None,
+            (true, true)  => Some(PacketType::DFL),
+            (false, _)    => None,
         } {
             type_vec.push(packet_type);
         }
         if let Some(packet_type) = match (is_ch1, is_last_ch1, is_first_ch1) {
             (true, false, false) => Some(PacketType::DSM),
-            (true, true, false) => Some(PacketType::DSL),
-            (true, false, true) => Some(PacketType::DSF),
-            (true, true, true) => Some(PacketType::DSS),
+            (true, true, false)  => Some(PacketType::DSL),
+            (true, false, true)  => Some(PacketType::DSF),
+            (true, true, true)   => Some(PacketType::DSS),
             _ => None,
         } {
             type_vec.push(packet_type);
