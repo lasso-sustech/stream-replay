@@ -100,6 +100,10 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
     let addr = format!("0.0.0.0:0");
     let pong_socket = UdpSocket::bind(&addr).unwrap();
     pong_socket.set_nonblocking(true).unwrap();
+
+    let temp_socket = UdpSocket::bind("0.0.0.0:42639").unwrap();
+    temp_socket.set_nonblocking(true).unwrap();
+
     println!("Waiting ...");
     let mut buffer = [0; 10240];
     loop {
@@ -117,7 +121,8 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                     match args.rx_mode {
                         true => {
                             if data.recv_records[&seq].complete() {
-                                let res = data.recv_records[&seq].gather();
+                                let recv_packet = data.recv_records[&seq].gather();
+                                let _ = temp_socket.send_to(&recv_packet, "10.25.11.100:12345");
                             }
                         },
                         false => {}
@@ -151,7 +156,8 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                     match args.rx_mode {
                         true => {
                             if data.recv_records[&seq].complete() {
-                                let res = data.recv_records[&seq].gather();
+                                let recv_packet = data.recv_records[&seq].gather();
+                                let _ = temp_socket.send_to(&recv_packet, "10.25.11.100:12345");
                             }
                         },
                         false => {}

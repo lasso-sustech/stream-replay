@@ -10,5 +10,6 @@ mod ipc;
 mod tx_part_ctl;
 mod destination;
 mod link;
+mod statistic;
 
 pub mod android;

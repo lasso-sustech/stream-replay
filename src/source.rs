@@ -35,7 +35,7 @@ pub fn stream_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
         template.next_seq(_num, _remains);
         let mut packet_states = tx_part_ctler.lock().unwrap().get_packet_states(num);
         for idx in 0..num {
-            template.next_offset();
+            template.set_offset(idx as u16);
             if idx == num-1 {
                 template.set_length(_remains as u16);
                 template.set_payload(&buffer[(idx*MAX_PAYLOAD_LEN)..]);
