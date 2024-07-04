@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::vec;
-use crate::packet::PacketStruct;
-use crate::packet::PacketType;
+use crate::packet::{self, PacketStruct, PacketType};
 use crate::link::Link;
 
 #[derive(Debug)]
@@ -99,7 +98,7 @@ impl TxPartCtler {
         let mut i = 0;
         while i < packets.len() {
             let tx_ipaddr = self.tx_ipaddrs[0].clone();
-            match PacketStruct::channel_info(packets[i].indicators) {
+            match packet::channel_info(packets[i].indicators) {
                 0 => {
                     let packet = packets.remove(i);
                     part_packets.entry(tx_ipaddr)
@@ -121,7 +120,7 @@ impl TxPartCtler {
         while i > 0 {
             i -= 1;
             let tx_ipaddr = self.tx_ipaddrs[1].clone();
-            match PacketStruct::channel_info(packets[i].indicators) {
+            match packet::channel_info(packets[i].indicators) {
                 _ => {
                     let packet = packets.remove(i);
                     part_packets.entry(tx_ipaddr)

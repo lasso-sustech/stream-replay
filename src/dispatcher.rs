@@ -87,7 +87,7 @@ fn dispatcher_thread(rx: PacketReceiver, links:Vec<Link>, tos:u8, blocked_signal
                     if !packet_list.is_empty() {
                         all_empty = false;
                         let packet = packet_list.remove(0);
-                        let sock_tx = socket_infos.get(tx_ipaddr).unwrap().clone();
+                        let sock_tx = socket_infos.get(tx_ipaddr).unwrap();
                         sock_tx.send(packet).unwrap();
                     }
                 }
@@ -125,6 +125,6 @@ fn socket_thread(sock: UdpSocket, rx:PacketReceiver, blocked_signal:BlockedSigna
                     Err(e) => panic!("encountered IO error: {e}")
                 }
             } 
-    }   
+        }   
     }
 }

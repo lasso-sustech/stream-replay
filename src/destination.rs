@@ -6,8 +6,7 @@ use std::sync::{Arc, Mutex};
 use clap::Parser;
 use std::io::ErrorKind;
 
-use crate::packet::PacketStruct;
-use crate::packet::PacketType;
+use crate::packet::{self, PacketStruct, PacketType};
 
 const PONG_PORT_INC: u16 = 1024;
 
@@ -18,45 +17,89 @@ pub struct Args {
     pub calc_rtt : bool,
     pub rx_mode: bool,
 }
+#[derive(Default)]
+struct RecvOffsets {
+    sl: Option<u16>,
+    dfl: Option<u16>,
+    dsf: Option<u16>,
+    dsl: Option<u16>,
+}
+
+#[derive(Default)]
+struct RecvComplete {
+    sl_complete: bool,
+    ch1_complete: bool,
+    ch2_complete: bool,
+}
+
+type IsACK = (bool, bool);
 
 pub struct RecvRecord {
     pub packets: HashMap<u16, PacketStruct>, // Use a HashMap to store packets by their offset
-    indicators: (bool, bool, bool, bool),
+    offsets: RecvOffsets,
+    is_complete: RecvComplete,
+    is_ack: IsACK,
 }
 
 impl RecvRecord {
     fn new() -> Self{
         Self{
             packets: HashMap::<u16, PacketStruct>::new(),
-            indicators: (false, false, false, false),
+            offsets: RecvOffsets::default(),
+            is_complete: RecvComplete::default(),
+            is_ack : (false, false),
         }
     }
-    fn record(&mut self, data: &[u8]){
-        let packet = PacketStruct::from_buffer(data);
-        match PacketStruct::get_packet_type(packet.indicators) {
-            PacketType::SL  => {self.indicators.0 = true;},
-            PacketType::DFL => {self.indicators.1 = true;},
-            PacketType::DSL => {self.indicators.2 = true;},
-            PacketType::DSF => {self.indicators.3 = true;},
-            PacketType::DSS => {self.indicators.2 = true; self.indicators.3 = true;},
+    fn record(&mut self, data: &[u8]) {
+        let packet = packet::from_buffer(data);
+        let offset = Some(packet.offset);
+
+        match packet::get_packet_type(packet.indicators) {
+            PacketType::SL  => self.offsets.sl = offset,
+            PacketType::DFL => self.offsets.dfl = offset,
+            PacketType::DSF => self.offsets.dsf = offset,
+            PacketType::DSL => self.offsets.dsl = offset,
+            PacketType::DSS => {
+                self.offsets.dsf = offset;
+                self.offsets.dsl = offset;
+            }
             _ => {}
         }
+
         self.packets.insert(packet.offset as u16, packet);
+        self.is_complete = self.determine_complete();
     }
-    fn complete(&self) -> bool{
-        if self.indicators.0 || (self.indicators.1 && self.indicators.2 && self.indicators.3) {
-            let num_packets = self.packets.len();
-            if num_packets == 0 {
-                return false; // No packets, return false
-            }
-            for i in 0..num_packets {
-                if !self.packets.contains_key(&(i as u16)) {
-                    return false;
-                }
-            }
-            return true;
+
+    fn is_complete(&self) -> bool {
+        self.is_complete.sl_complete || (self.is_complete.ch1_complete && self.is_complete.ch2_complete)
+    }
+
+    fn is_fst_ack(&self) -> bool {
+        !self.is_ack.0 && (self.is_complete.sl_complete || self.is_complete.ch1_complete)
+    }
+
+    fn is_scd_ack(&self) -> bool {
+        !self.is_ack.1 && self.is_complete.ch2_complete
+    }
+
+    fn determine_complete(&self) -> RecvComplete {
+        fn is_range_complete(packets: &HashMap<u16, PacketStruct>, mut range: std::ops::RangeInclusive<u16>) -> bool {
+            range.all(|i| packets.contains_key(&i))
         }
-        return false;
+    
+        if let Some(sl) = self.offsets.sl {
+            if is_range_complete(&self.packets, 0..=sl) {
+                return RecvComplete { sl_complete: true, ch1_complete: false, ch2_complete: false };
+            }
+        }
+    
+        let ch1_complete = self.offsets.dfl.map_or(false, |dfl| is_range_complete(&self.packets, 0..=dfl));
+        let ch2_complete = match (self.offsets.dsf, self.offsets.dsl) {
+            (Some(dsf), Some(dsl)) => is_range_complete(&self.packets, dsf..=dsl),
+            _ => false,
+        };
+
+        RecvComplete { sl_complete: false, ch1_complete, ch2_complete }
     }
     #[allow(dead_code)]
     fn gather(&self) -> Vec<u8>{
@@ -92,6 +135,21 @@ impl RecvData{
     }
 }
 
+fn send_ack(pong_socket: &UdpSocket, buffer: &[u8], ping_addr: &str) {
+    loop {
+        match pong_socket.send_to(&buffer, ping_addr) {
+            Ok(_) => break,
+            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                println!("Send operation would block, retrying later...");
+            }
+            Err(e) => {
+                eprintln!("Error sending data: {}", e);
+                break;
+            }
+        }
+    }
+}
+
 pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mutex<bool>>){
     let addr = format!("0.0.0.0:{}", args.port);    
     let socket = UdpSocket::bind(&addr).unwrap();
@@ -113,16 +171,17 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
             match args.calc_rtt {
                 true => {
                     let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
-                    data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);               
+                    data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);     
+                    let _record = &data.recv_records[&seq];          
                     match args.rx_mode {
                         true => {
-                            if data.recv_records[&seq].complete() {
-                                let res = data.recv_records[&seq].gather();
+                            if _record.is_complete()  {
+                                let _ = _record.gather();
                             }
                         },
                         false => {}
                     }
-                    if data.recv_records[&seq].complete() { //TODO: deal with removing of uncompleted packets
+                    if _record.is_complete()  { //TODO: deal with removing of uncompleted packets
                         data.recv_records.remove(&seq);
                         data.recevied += 1;
                     }
@@ -147,44 +206,37 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                 true => {
                     let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
                     data.last_seq = seq;
-                    data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);      
+                    data.recv_records.entry(seq).or_insert_with(|| RecvRecord::new()).record(&buffer);     
+                    let mut _record = &mut data.recv_records.get_mut(&seq).unwrap();
                     match args.rx_mode {
                         true => {
-                            if data.recv_records[&seq].complete() {
-                                let res = data.recv_records[&seq].gather();
+                            if  _record.is_complete() {
+                                let _ = _record.gather();
                             }
                         },
                         false => {}
                     }
-                    if data.recv_records[&seq].complete() {
+                    
+                    if _record.is_fst_ack() || _record.is_scd_ack() {
+                        let packet_type = if _record.is_fst_ack() {
+                            _record.is_ack.0 = true;
+                            PacketType::DFL
+                        } else {
+                            _record.is_ack.1 = true;
+                            PacketType::DSL
+                        };
+                        buffer[18..19].copy_from_slice(packet::to_indicator(packet_type).to_le_bytes().as_ref());
+                        let ping_addr = format!("{}:{}", src_addr.ip(), args.port + PONG_PORT_INC);
+                        send_ack(&pong_socket, &mut buffer[.._len], &ping_addr);
+                    }
+
+                    if  _record.is_complete() {
                         data.recv_records.remove(&seq);
                         data.recevied += 1;
                     }
                 },
                 false => {},
             }
-
-            let indicator = u8::from_le_bytes(buffer[10..11].try_into().unwrap());
-            match PacketStruct::get_packet_type(indicator) {
-                PacketType::SL | PacketType::DFL | PacketType::DSL | PacketType::DSS  => {
-                    let ping_addr = format!("{}:{}", src_addr.ip(), args.port + PONG_PORT_INC);
-                    buffer[18..19].copy_from_slice(( indicator ).to_le_bytes().as_ref());
-                    loop {
-                        match pong_socket.send_to(&mut buffer[.._len], &ping_addr) {
-                            Ok(_) => {break;},
-                            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                                println!("Send operation would block, retrying later...");
-                            }
-                            Err(e) => {
-                                eprintln!("Error sending data: {}", e);
-                                break;
-                            }
-                        }
-                    }
-                },
-                _ => {}
-            }
-
         }
     }
 }

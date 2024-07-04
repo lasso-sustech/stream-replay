@@ -6,7 +6,7 @@ use std::thread::{self, JoinHandle};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::SystemTime;
 
-use crate::packet::PacketStruct;
+use crate::packet;
 use crate::statistic::rtt_records::RttRecords;
 
 type SeqRecords = HashMap<u32,f64>;
@@ -47,12 +47,12 @@ fn pong_recv_thread(name: String, port: u16, seq_records: GuardedSeqRecords, rtt
             _records.get(&seq).cloned()
         } {
             let rtt = time_now - last_time;
-            let is_complete = rtt_records.lock().unwrap().update(seq as usize,  PacketStruct::get_packet_type(indicator), rtt);
+            let is_complete = rtt_records.lock().unwrap().update(seq as usize,  packet::get_packet_type(indicator), rtt);
             if is_complete {
                 let mut _records = seq_records.lock().unwrap(); 
                 _records.remove(&seq);
             }
-            let message = format!("{} {:.6} {:.6} \n", seq, rtt, PacketStruct::channel_info(indicator));
+            let message = format!("{} {:.6} {:.6} \n", seq, rtt, packet::channel_info(indicator));
             logger.write_all( message.as_bytes() ).unwrap();
         };
     }

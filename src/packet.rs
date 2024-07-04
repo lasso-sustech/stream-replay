@@ -58,44 +58,48 @@ impl PacketStruct {
         self.offset = offset;
     }
 
-    pub fn set_indicator(&mut self, packet_type: PacketType) {
-        match packet_type {
-            PacketType::SNL => self.indicators = 0b00000000,
-            PacketType::SL => self.indicators  = 0b00000001,
-            PacketType::DFN => self.indicators = 0b00000010,
-            PacketType::DFL => self.indicators = 0b00000011,
-            PacketType::DSS => self.indicators = 0b00000100,
-            PacketType::DSF => self.indicators = 0b00000101,
-            PacketType::DSM => self.indicators = 0b00000110,
-            PacketType::DSL => self.indicators = 0b00000111,
-        }
+    pub fn set_indicator(&mut self, packet_type: PacketType){
+        self.indicators = to_indicator(packet_type);
     }
-    pub fn get_packet_type(indicators: u8) -> PacketType {
-        match indicators {
-            0b00000000 => PacketType::SNL,
-            0b00000001 => PacketType::SL,
-            0b00000010 => PacketType::DFN,
-            0b00000011 => PacketType::DFL,
-            0b00000100 => PacketType::DSS,
-            0b00000101 => PacketType::DSF,
-            0b00000110 => PacketType::DSM,
-            0b00000111 => PacketType::DSL,
-            _ => panic!("Invalid packet type")
-        }
-    }
+}
 
-    pub fn channel_info(indicator: u8) -> u8{
-        (indicator & 0b00000100) >> 2
-    }
+pub fn channel_info(indicator: u8) -> u8{
+    (indicator & 0b00000100) >> 2
+}
 
-    pub fn from_buffer(buffer: &[u8]) -> Self {
-        // usafe to cast buffer to PacketStruct
-        unsafe {
-            let mut packet: PacketStruct = std::mem::zeroed();
-            let packet_ptr = &mut packet as *mut PacketStruct as *mut u8;
-            std::ptr::copy_nonoverlapping(buffer.as_ptr(), packet_ptr, std::mem::size_of::<PacketStruct>());
-            packet
-        }
+pub fn from_buffer(buffer: &[u8]) -> PacketStruct {
+    // usafe to cast buffer to PacketStruct
+    unsafe {
+        let mut packet: PacketStruct = std::mem::zeroed();
+        let packet_ptr = &mut packet as *mut PacketStruct as *mut u8;
+        std::ptr::copy_nonoverlapping(buffer.as_ptr(), packet_ptr, std::mem::size_of::<PacketStruct>());
+        packet
+    }
+}
+
+pub fn to_indicator(packet_type: PacketType) -> u8 {
+    match packet_type {
+        PacketType::SNL =>  0b00000000,
+        PacketType::SL  =>  0b00000001,
+        PacketType::DFN =>  0b00000010,
+        PacketType::DFL =>  0b00000011,
+        PacketType::DSS =>  0b00000100,
+        PacketType::DSF =>  0b00000101,
+        PacketType::DSM =>  0b00000110,
+        PacketType::DSL =>  0b00000111,
+    }
+}
+pub fn get_packet_type(indicators: u8) -> PacketType {
+    match indicators {
+        0b00000000 => PacketType::SNL,
+        0b00000001 => PacketType::SL,
+        0b00000010 => PacketType::DFN,
+        0b00000011 => PacketType::DFL,
+        0b00000100 => PacketType::DSS,
+        0b00000101 => PacketType::DSF,
+        0b00000110 => PacketType::DSM,
+        0b00000111 => PacketType::DSL,
+        _ => panic!("Invalid packet type")
     }
 }
 
