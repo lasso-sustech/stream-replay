@@ -95,7 +95,7 @@ impl RecvRecord {
     
         let ch1_complete = self.offsets.dfl.map_or(false, |dfl| is_range_complete(&self.packets, 0..=dfl));
         let ch2_complete = match (self.offsets.dsf, self.offsets.dsl) {
-            (Some(dsf), Some(dsl)) => is_range_complete(&self.packets, dsf..=dsl),
+            (Some(dsf), Some(dsl)) => is_range_complete(&self.packets, dsl..=dsf),
             _ => false,
         };
 
@@ -217,7 +217,7 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                         false => {}
                     }
                     
-                    if _record.is_fst_ack() || _record.is_scd_ack() {
+                    if  _record.is_fst_ack() || _record.is_scd_ack() {
                         let packet_type = if _record.is_fst_ack() {
                             _record.is_ack.0 = true;
                             PacketType::DFL

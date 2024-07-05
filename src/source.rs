@@ -4,6 +4,9 @@ use std::time::{Duration, SystemTime};
 use ndarray::prelude::*;
 use ndarray_npy::read_npy;
 
+use rand::seq::SliceRandom;
+use rand::thread_rng;
+
 use crate::conf::{StreamParam, ConnParams};
 use crate::packet::*;
 use crate::broker::GlobalBroker;
@@ -44,16 +47,23 @@ pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
             let (_num, _remains) = (size_bytes/MAX_PAYLOAD_LEN, size_bytes%MAX_PAYLOAD_LEN); 
             let num = _num + if _remains > 0 { 1 } else { 0 };
             template.next_seq(_num, _remains);
-            template.set_length(MAX_PAYLOAD_LEN as u16);
-            let mut packet_states = tx_part_ctler.lock().unwrap().get_packet_states(num);
-            for idx in 0..num {
-                template.set_offset(idx as u16);
-                if idx == num-1 {
-                    template.set_length(_remains as u16);
-                }
-                let packet_types = packet_states.remove(0);
-                for packet_type in packet_types {
+            let mut packet_states: Vec<Vec<(u16, PacketType)>> = tx_part_ctler.lock().unwrap().get_packet_states(num);
+
+            let mut rng = thread_rng();
+            packet_states.shuffle(&mut rng);
+
+            for packet_state in packet_states {
+                for (offset, packet_type) in packet_state {
+                    let length = if offset == (num - 1) as u16 {
+                        _remains as u16
+                    } else {
+                        MAX_PAYLOAD_LEN as u16
+                    };
+                    
+                    template.set_length(length);
+                    template.set_offset(offset);
                     template.set_indicator(packet_type);
+                    
                     packets.push(template.clone());
                 }
             }

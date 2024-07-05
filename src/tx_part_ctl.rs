@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use std::vec;
 use crate::packet::{self, PacketStruct, PacketType};
 use crate::link::Link;
 
+type OffsetPacket = (u16, PacketType);
 #[derive(Debug)]
 pub struct TxPartCtler {
     tx_parts: Vec<f64>,
@@ -34,58 +34,63 @@ impl TxPartCtler {
     //             ^           ^
     //             |           |
     //        tx_part_ch1  tx_part_ch0
-    pub fn get_packet_state(&self, offset: u16, num: usize) -> Vec<PacketType> {
-        if self.tx_parts.len() < 2 {
-            if offset == (num as u16 - 1) {
-                return vec![PacketType::SL];
-            }
-            return vec![PacketType::SNL];
-        }
 
+    fn is_single_channel(&self, num: usize) -> bool {
         let tx_part_ch0 = self.tx_parts[0] * num as f64;
         let tx_part_ch1 = self.tx_parts[1] * num as f64;
 
-        if ( 0 as f64 >= tx_part_ch1) || ( ( (num - 1) as f64 ) < tx_part_ch0  ) {
-            if offset == (num as u16 - 1) {
-                return vec![PacketType::SL];
-            }
-            return vec![PacketType::SNL];
-        }
-
-        let offset = offset as f64;
-        let is_ch0 = offset < tx_part_ch0;
-        let is_ch1 = offset >=  tx_part_ch1;
-        let is_last_ch0 = offset >=  (tx_part_ch0 - 1.0);
-        let is_first_ch1= offset == (num as f64  - 1.0);
-        let is_last_ch1 = offset < (tx_part_ch1 + 1.0);
-        
-        let mut type_vec = Vec::<PacketType>::new();
-        if let Some(packet_type) = match (is_ch0, is_last_ch0) {
-            (true, false) => Some(PacketType::DFN),
-            (true, true)  => Some(PacketType::DFL),
-            (false, _)    => None,
-        } {
-            type_vec.push(packet_type);
-        }
-        if let Some(packet_type) = match (is_ch1, is_last_ch1, is_first_ch1) {
-            (true, false, false) => Some(PacketType::DSM),
-            (true, true, false)  => Some(PacketType::DSL),
-            (true, false, true)  => Some(PacketType::DSF),
-            (true, true, true)   => Some(PacketType::DSS),
-            _ => None,
-        } {
-            type_vec.push(packet_type);
-        }
-
-        type_vec
-        
+        self.tx_parts.len() < 2 || tx_part_ch1 <= 0.0 || ((num - 1) as f64) < tx_part_ch0
     }
 
-    pub fn get_packet_states(&self, num: usize) -> Vec<Vec<PacketType>> {
-        let mut results = Vec::new();
-        for offset in 0..=num-1 {
-            let state = self.get_packet_state(offset as u16, num);
-            results.push(state);
+    pub fn get_packet_state(&self, offset: f64, num: usize, channel: u16) -> Option<PacketType> {
+        let tx_part_ch0 = self.tx_parts[0] * num as f64;
+        let tx_part_ch1 = self.tx_parts[1] * num as f64;
+
+        match channel {
+            1 => {
+                match (offset < tx_part_ch0, offset >= tx_part_ch0 - 1.0) {
+                    (true, false) => Some(PacketType::DFN),
+                    (true, true) => Some(PacketType::DFL),
+                    _ => None,
+                }
+            },
+            2 => {
+                match (offset >= tx_part_ch1, offset < tx_part_ch1 + 1.0, offset == (num - 1) as f64) {
+                    (true, false, false) => Some(PacketType::DSM),
+                    (true, true, false) => Some(PacketType::DSL),
+                    (true, false, true) => Some(PacketType::DSF),
+                    (true, true, true) => Some(PacketType::DSS),
+                    _ => None,
+                }
+            },
+            _ => {
+                if offset == (num - 1) as f64 {
+                    Some(PacketType::SL)
+                } else {
+                    Some(PacketType::SNL)
+                }
+            }
+        }
+    }
+
+    pub fn get_packet_states(&self, num: usize) -> Vec<Vec<OffsetPacket>> {
+        let mut results = vec![Vec::new(); 3];
+    
+        if self.is_single_channel(num) {
+            for offset in 0..num {
+                if let Some(packet_type) = self.get_packet_state(offset as f64, num, 0) {
+                    results[0].push((offset as u16, packet_type));
+                }
+            }
+        } else {
+            for offset in 0..num {
+                if let Some(packet_type) = self.get_packet_state(offset as f64, num, 1) {
+                    results[1].push((offset as u16, packet_type));
+                }
+                if let Some(packet_type) = self.get_packet_state(offset as f64, num, 2) {
+                    results[2].push((offset as u16, packet_type));
+                }
+            }
         }
         results
     }

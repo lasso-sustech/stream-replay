@@ -78,24 +78,15 @@ fn dispatcher_thread(rx: PacketReceiver, links:Vec<Link>, tos:u8, blocked_signal
             continue;
         }
         // prepare packets for each tx_ipaddr
-        let mut ip_packets: HashMap<String, Vec<PacketStruct>> = tx_part_ctler.lock().unwrap().process_packets(packets);
-        let ip_addresses: Vec<String> = ip_packets.keys().cloned().collect();
-        loop {
-            let mut all_empty = true;
-            for tx_ipaddr in &ip_addresses {
-                if let Some(packet_list) = ip_packets.get_mut(tx_ipaddr) {
-                    if !packet_list.is_empty() {
-                        all_empty = false;
-                        let packet = packet_list.remove(0);
-                        let sock_tx = socket_infos.get(tx_ipaddr).unwrap();
-                        sock_tx.send(packet).unwrap();
-                    }
+        tx_part_ctler.lock().unwrap().process_packets(packets)
+        .iter()
+        .for_each(|(tx_ipaddr, packets)| {
+            if let Some(socket_tx) = socket_infos.get(tx_ipaddr) {
+                for packet in packets.iter() {
+                    socket_tx.send(packet.clone()).unwrap();
                 }
             }
-            if all_empty {
-                break;
-            }
-        }
+        });
     }
 }
 
