@@ -36,18 +36,20 @@ impl TxPartCtler {
     //        tx_part_ch1  tx_part_ch0
 
     fn is_single_channel(&self, num: usize) -> bool {
+        if self.tx_parts.len() < 2 {
+            return true;
+        }
+
         let tx_part_ch0 = self.tx_parts[0] * num as f64;
         let tx_part_ch1 = self.tx_parts[1] * num as f64;
 
-        self.tx_parts.len() < 2 || tx_part_ch1 <= 0.0 || ((num - 1) as f64) < tx_part_ch0
+        tx_part_ch1 <= 0.0 || ((num - 1) as f64) < tx_part_ch0
     }
 
     pub fn get_packet_state(&self, offset: f64, num: usize, channel: u16) -> Option<PacketType> {
-        let tx_part_ch0 = self.tx_parts[0] * num as f64;
-        let tx_part_ch1 = self.tx_parts[1] * num as f64;
-
         match channel {
             1 => {
+                let tx_part_ch0 = self.tx_parts[0] * num as f64;
                 match (offset < tx_part_ch0, offset >= tx_part_ch0 - 1.0) {
                     (true, false) => Some(PacketType::DFN),
                     (true, true) => Some(PacketType::DFL),
@@ -55,6 +57,7 @@ impl TxPartCtler {
                 }
             },
             2 => {
+                let tx_part_ch1 = self.tx_parts[1] * num as f64;
                 match (offset >= tx_part_ch1, offset < tx_part_ch1 + 1.0, offset == (num - 1) as f64) {
                     (true, false, false) => Some(PacketType::DSM),
                     (true, true, false) => Some(PacketType::DSL),
