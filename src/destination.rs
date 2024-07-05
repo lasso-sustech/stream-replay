@@ -122,7 +122,10 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                         true => {
                             if data.recv_records[&seq].complete() {
                                 let recv_packet = data.recv_records[&seq].gather();
-                                let _ = temp_socket.send_to(&recv_packet, "10.25.11.100:12345");
+                                if let Some(tx) = &data.tx {
+                                    tx.send(recv_packet).unwrap();
+                                }
+                                // let _ = temp_socket.send_to(&recv_packet, "10.25.11.100:12345");
                             }
                         },
                         false => {}
@@ -157,7 +160,10 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                         true => {
                             if data.recv_records[&seq].complete() {
                                 let recv_packet = data.recv_records[&seq].gather();
-                                let _ = temp_socket.send_to(&recv_packet, "10.25.11.100:12345");
+                                if let Some(tx) = &data.tx {
+                                    tx.send(recv_packet).unwrap();
+                                }
+                                // let _ = temp_socket.send_to(&recv_packet, "10.25.11.100:12345");
                             }
                         },
                         false => {}

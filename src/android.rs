@@ -248,7 +248,8 @@ pub extern "system" fn Java_com_github_lasso_1sustech_androidscreencaster_servic
             match rx_map.lock().expect("rx_map lock failed").get(&port) {
                 None => empty_array.into_raw(),
                 Some(rx) => {
-                    let array: Vec<u8> = rx.try_iter().flatten().collect();
+                    // let array: Vec<u8> = rx.try_iter().flatten().collect();
+                    let array: Vec<u8> = rx.try_recv().unwrap_or(vec![]);
                     let array = env.byte_array_from_slice(&array).expect("invalid byte array");
                     array.into_raw()
                 }
