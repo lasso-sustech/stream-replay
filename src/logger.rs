@@ -1,11 +1,6 @@
-use log::LevelFilter;
-use log4rs::{
-    append::file::FileAppender,
-    config::{Appender, Config, Logger, Root},
-    encode::pattern::PatternEncoder,
-    init_config,
-};
-use std::{env, fs::File};
+use log::{self, LevelFilter};
+use env_logger::Builder;
+use std::{env, fs::{self, OpenOptions}, io::Write};
 
 fn get_log_level_from_env() -> LevelFilter {
     match env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()).to_lowercase().as_str() {
@@ -20,30 +15,33 @@ fn get_log_level_from_env() -> LevelFilter {
 
 pub fn init_log(if_rx: bool) {
     let log_file = if if_rx { "log/rx_output.log" } else { "log/output.log" };
-    let appender_name = if if_rx { "rx_file" } else { "file" };
     let level = get_log_level_from_env();
 
-    File::create(log_file).unwrap(); //clear log
+    // Ensure log directory exists
+    fs::create_dir_all("log").unwrap();
 
-    let file_appender = FileAppender::builder()
-        .encoder(Box::new(PatternEncoder::new("{l} - {m}{n}")))
-        .build(log_file)
+    // Clear the log file
+    OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create(true)
+        .open(log_file)
         .unwrap();
 
-    let mut config_builder = Config::builder().appender(Appender::builder().build(appender_name, Box::new(file_appender)));
-
-    if if_rx {
-        config_builder = config_builder.logger(
-            Logger::builder()
-                .appender(appender_name)
-                .additive(false)
-                .build("destination", LevelFilter::Trace),
-        );
-    }
-
-    let config = config_builder
-        .build(Root::builder().appender(appender_name).build(level))
+    // Set up env_logger to write to the log file
+    let file = OpenOptions::new()
+        .write(true)
+        .append(true)
+        .open(log_file)
         .unwrap();
 
-    init_config(config).unwrap();
+    Builder::new()
+        .format(move |_, record| {
+            let log_line = format!("{} - {}", record.level(), record.args());
+            let mut file = file.try_clone().expect("Failed to clone file handle");
+            writeln!(file, "{}", log_line).expect("Failed to write to log file");
+            Ok(())
+        })
+        .filter(None, level)
+        .init();
 }
