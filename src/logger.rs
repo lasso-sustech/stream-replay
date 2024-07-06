@@ -3,7 +3,7 @@ use env_logger::Builder;
 use std::{env, fs::{self, OpenOptions}, io::Write};
 
 fn get_log_level_from_env() -> LevelFilter {
-    match env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()).to_lowercase().as_str() {
+    match env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()).to_lowercase().as_str() {
         "trace" => LevelFilter::Trace,
         "debug" => LevelFilter::Debug,
         "info" => LevelFilter::Info,
