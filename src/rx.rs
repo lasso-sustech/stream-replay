@@ -1,11 +1,15 @@
 mod packet;
 mod destination;
+mod logger;
+
 
 use std::sync::{mpsc, Arc, Mutex};
 use clap::Parser;
 use crate::destination::*;
+use crate::logger::init_log;
 
 fn main() {
+    init_log(true);
     let args = Args::parse();
     let recv_data = Arc::new(Mutex::new(RecvData::new()));
     let recv_data_final = Arc::clone(&recv_data);

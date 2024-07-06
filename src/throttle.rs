@@ -1,5 +1,4 @@
-use std::fs::File;
-use std::io::prelude::*;
+use log::trace;
 use std::time::SystemTime;
 use std::collections::VecDeque;
 use crate::packet::{PacketStruct,UDP_MAX_LENGTH};
@@ -60,7 +59,7 @@ where T:Sized + Copy
 
 pub struct RateThrottler {
     pub name: String,
-    logger: Option<File>,
+    is_log: bool,
     window: CycledVecDequeue<(TIME, SIZE)>,
     buffer: CycledVecDequeue<PacketStruct>,
     sum_bytes: usize,
@@ -77,17 +76,14 @@ impl RateThrottler {
             true  => CycledVecDequeue::new(0),
             false => CycledVecDequeue::new(CYCLED_RATIO * window_size)
         };
-        let logger = match no_logging {
-            false => Some(File::create( format!("logs/log-{}.txt", name) ).unwrap()),
-            true => None
-        };
+        let is_log = !no_logging;
         let window = CycledVecDequeue::new(window_size);
         let max_error = (MAX_ERR_RATIO * window_size as f64) as usize * UDP_MAX_LENGTH;
 
         // let last_rate = Arc::new(Mutex::new( 0.0 ));
         // let throttle = Arc::new(Mutex::new( throttle ));
 
-        Self{ name, logger, window, buffer, throttle, last_rate:0.0,
+        Self{ name, is_log: is_log, window, buffer, throttle, last_rate:0.0,
                 sum_bytes:0, acc_error:0, max_error }
     }
 
@@ -123,9 +119,8 @@ impl RateThrottler {
     pub fn prepare(&mut self, packets: Vec<PacketStruct>) {
         let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
         let _rate_mbps = self.current_rate_mbps(None).unwrap_or(0.0);
-        if let Some(ref mut logger) = self.logger {
-            let message = format!("{:.9} {} {:.6}\n", timestamp, self.buffer.len(), _rate_mbps );
-            logger.write_all( message.as_bytes() ).unwrap();
+        if self.is_log {
+            trace!("Name {}, Time {:.9}, Buffer length {}, Rate, {:.6}\n", self.name, timestamp, self.buffer.len(), _rate_mbps);
         }
         for packet in packets.into_iter() {
             self.buffer.try_push(packet);
@@ -155,9 +150,8 @@ impl RateThrottler {
     pub fn consume(&mut self) -> Option<PacketStruct> {
         let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
         let _rate_mbps = self.current_rate_mbps(None).unwrap_or(0.0);
-        if let Some(ref mut logger) = self.logger {
-            let message = format!("{:.9} {} {:.6}\n", timestamp, self.buffer.len(), _rate_mbps );
-            logger.write_all( message.as_bytes() ).unwrap();
+        if self.is_log {
+            trace!("Name {}, Time {:.9}, Buffer length {}, Rate, {:.6}\n", self.name, timestamp, self.buffer.len(), _rate_mbps);
         }
         self.buffer.pop_front()
     }

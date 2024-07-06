@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::net::ToSocketAddrs;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
+use log::trace;
+
 use crate::link::Link;
 
 use crate::packet::{PacketSender,PacketReceiver, PacketStruct, APP_HEADER_LENGTH, any_as_u8_slice};
@@ -83,6 +85,7 @@ fn dispatcher_thread(rx: PacketReceiver, links:Vec<Link>, tos:u8, blocked_signal
         .for_each(|(tx_ipaddr, packets)| {
             if let Some(socket_tx) = socket_infos.get(tx_ipaddr) {
                 for packet in packets.iter() {
+                    trace!("Dispatcher: Time {} -> seq {}-offset {}-ip_addr {}", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64() , packet.seq as u32, packet.offset as u16, tx_ipaddr);
                     socket_tx.send(packet.clone()).unwrap();
                 }
             }
@@ -107,6 +110,7 @@ fn socket_thread(sock: UdpSocket, rx:PacketReceiver, blocked_signal:BlockedSigna
                 match sock.send_to(&buf[..length], &addr) {
                     Ok(_len) => {
                         *_signal = false;
+                        trace!("Socket: Time {} -> seq {}-offset {}-ip_addr {}", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64() , packet.seq as u32, packet.offset as u16, addr);
                         break
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {

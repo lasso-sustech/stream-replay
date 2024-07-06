@@ -10,9 +10,13 @@ mod ipc;
 mod tx_part_ctl;
 mod link;
 mod statistic;
+mod logger;
 
 use std::collections::HashMap;
 use std::path::Path;
+use log::{info};
+use logger::init_log;
+use std::time::SystemTime;
 // use std::rc::Rc;
 
 use clap::Parser;
@@ -39,8 +43,10 @@ struct ProgArgs {
 }
 
 fn main() {
+    init_log(false);
     // load the manifest file
     let args = ProgArgs::parse();
+    info!{"Starting Transmitting as time {}.", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64()};
     // let tx_ipaddr = args.tx_ip_address;
     let file = std::fs::File::open(&args.manifest_file).unwrap();
     let reader = std::io::BufReader::new( file );

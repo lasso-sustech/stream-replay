@@ -4,6 +4,7 @@ use std::net::UdpSocket;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use clap::Parser;
+use log::trace;
 use std::io::ErrorKind;
 
 use crate::packet::{self, PacketStruct, PacketType};
@@ -219,9 +220,11 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                     
                     if  _record.is_fst_ack() || _record.is_scd_ack() {
                         let packet_type = if _record.is_fst_ack() {
+                            trace!("ACKFirst: Time {} -> seq: {}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64(), seq);
                             _record.is_ack.0 = true;
                             PacketType::DFL
                         } else {
+                            trace!("ACKSecond: Time {} -> seq: {}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64(), seq);
                             _record.is_ack.1 = true;
                             PacketType::DSL
                         };

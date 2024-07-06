@@ -3,6 +3,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime};
 use ndarray::prelude::*;
 use ndarray_npy::read_npy;
+use log::{trace,debug};
 
 use rand::seq::SliceRandom;
 use rand::thread_rng;
@@ -80,6 +81,7 @@ pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
             stop_time
         };
         
+        debug!("Source: Time {} -> frame {}",  SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64(), idx);
         // 3. process queue, aware of blocked status
         while SystemTime::now() < deadline {
             let _signal = blocked_signal.lock().unwrap();
@@ -87,6 +89,7 @@ pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
                 match throttler.lock().unwrap().try_consume(|mut packet| {
                     let time_now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
                     packet.timestamp = time_now;
+                    trace!("Source: Time {} -> seq {}, offset {}", time_now, packet.seq as u32, packet.offset as u16);
                     tx.send(packet).unwrap();
                     true
                 }) {
