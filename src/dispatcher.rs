@@ -85,6 +85,12 @@ fn dispatcher_thread(rx: PacketReceiver, links:Vec<Link>, tos:u8, blocked_signal
         .for_each(|(tx_ipaddr, packets)| {
             if let Some(socket_tx) = socket_infos.get(tx_ipaddr) {
                 for packet in packets.iter() {
+                    match packet::get_packet_type(packet.indicators) {
+                        packet::PacketType::DFL | packet::PacketType::SL | packet::PacketType::DSL | packet::PacketType::DSS => {
+                            trace!("Dispatcher: Time {} -> seq {}-offset {}-ip_addr {}", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64() , packet.seq as u32, packet.offset as u16, tx_ipaddr);
+                        }
+                        _ => {}
+                    }
                     socket_tx.send(packet.clone()).unwrap();
                 }
             }

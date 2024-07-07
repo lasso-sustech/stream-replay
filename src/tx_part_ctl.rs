@@ -111,12 +111,6 @@ impl TxPartCtler {
             let tx_ipaddr = self.tx_ipaddrs[0].clone();
             match packet::channel_info(packets[i].indicators) {
                 0 => {
-                    match packet::get_packet_type(packets[i].indicators) {
-                        PacketType::DFL | PacketType::SL => {
-                            trace!("Dispatcher: Time {} -> seq {}-offset {}-ip_addr {}", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64() , packets[i].seq as u32, packets[i].offset as u16, tx_ipaddr);
-                        }
-                        _ => {}
-                    }
                     let packet = packets.remove(i);
                     part_packets.entry(tx_ipaddr)
                         .or_insert_with(Vec::new)
@@ -139,12 +133,6 @@ impl TxPartCtler {
             let tx_ipaddr = self.tx_ipaddrs[1].clone();
             match packet::channel_info(packets[i].indicators) {
                 _ => {
-                    match packet::get_packet_type(packets[i].indicators) {
-                        PacketType::DSL | PacketType::DSS => {
-                            trace!("Dispatcher: Time {} -> seq {}-offset {}-ip_addr {}", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64() , packets[i].seq as u32, packets[i].offset as u16, tx_ipaddr);
-                        }
-                        _ => {}
-                    }
                     let packet = packets.remove(i);
                     part_packets.entry(tx_ipaddr)
                         .or_insert_with(Vec::new)
