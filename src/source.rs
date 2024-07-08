@@ -13,7 +13,6 @@ use crate::packet::*;
 use crate::dispatcher::UdpDispatcher;
 use crate::throttle::RateThrottler;
 use crate::rtt::{RttRecorder,RttSender};
-use crate::dispatcher::BlockedSignal;
 use crate::ipc::Statistics;
 use crate::tx_part_ctl::TxPartCtler;
 
@@ -21,7 +20,7 @@ type GuardedThrottler = Arc<Mutex<RateThrottler>>;
 type GuardedTxPartCtler = Arc<Mutex<TxPartCtler>>;
 
 pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtler, rtt_tx: Option<RttSender>,
-    params: ConnParams, tx:PacketSender, blocked_signal:BlockedSignal)
+    params: ConnParams, tx:PacketSender)
 {
     let trace: Array2<u64> = read_npy(&params.npy_file).expect("loading failed.");
     let (start_offset, duration) = (params.start_offset, params.duration);
@@ -84,17 +83,14 @@ pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
         trace!("Source: Time {} -> seq {}", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64(), template.seq as u32);
         // 3. process queue, aware of blocked status
         while SystemTime::now() < deadline {
-            let _signal = blocked_signal.lock().unwrap();
-            if !(*_signal) {
-                match throttler.lock().unwrap().try_consume(|mut packet| {
-                    let time_now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
-                    packet.timestamp = time_now;
-                    tx.send(packet).unwrap();
-                    true
-                }) {
-                    Some(_) => continue,
-                    None=> break
-                }
+            match throttler.lock().unwrap().try_consume(|mut packet| {
+                let time_now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
+                packet.timestamp = time_now;
+                tx.send(packet).unwrap();
+                true
+            }) {
+                Some(_) => continue,
+                None=> break
             }
         }
 
@@ -120,7 +116,6 @@ pub struct SourceManager{
     tx_part_ctler: Arc<Mutex<TxPartCtler>>,
     //
     tx: Vec<PacketSender>,
-    blocked_signal: BlockedSignal
 }
 
 impl SourceManager {
@@ -129,7 +124,7 @@ impl SourceManager {
         let name = stream.name();
 
         let mut dispatcher = UdpDispatcher::new();
-        let (tx, blocked_signal, tx_part_ctler) = dispatcher.start_new(params.links.clone(), params.tos, params.tx_parts.clone());
+        let (tx, tx_part_ctler) = dispatcher.start_new(params.links.clone(), params.tos, params.tx_parts.clone());
         
         let tx = [tx].into();
         
@@ -145,7 +140,7 @@ impl SourceManager {
         let start_timestamp = SystemTime::now();
         let stop_timestamp = SystemTime::now();
 
-        Self{ name, stream, throttler, rtt, tx_part_ctler, tx, blocked_signal, start_timestamp, stop_timestamp }
+        Self{ name, stream, throttler, rtt, tx_part_ctler, tx, start_timestamp, stop_timestamp }
     }
 
     pub fn throttle(&self, throttle:f64) {
@@ -193,13 +188,12 @@ impl SourceManager {
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = self.stream;
         let params = params.clone();
         let tx = self.tx.pop().unwrap();
-        let blocked_signal = Arc::clone(&self.blocked_signal);
 
         let _now = SystemTime::now();
         self.start_timestamp = _now + Duration::from_secs_f64( params.duration[0] );
         self.stop_timestamp = _now + Duration::from_secs_f64( params.duration[1] );
         let source = thread::spawn(move || {
-            source_thread(throttler, tx_part_ctler, rtt_tx, params, tx, blocked_signal)
+            source_thread(throttler, tx_part_ctler, rtt_tx, params, tx)
         });
 
         println!("{}. {} on ...", index, self.stream);
