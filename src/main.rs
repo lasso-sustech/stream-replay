@@ -1,7 +1,6 @@
 mod conf;
 mod packet;
 mod throttle;
-mod broker;
 mod source;
 mod dispatcher;
 mod rtt;
@@ -25,7 +24,6 @@ use serde_json;
 use crate::conf::Manifest;
 use crate::ipc::IPCDaemon;
 use crate::source::SourceManager;
-use crate::broker::GlobalBroker;
 
 
 #[derive(Parser, Debug)]
@@ -55,17 +53,11 @@ fn main() {
     // parse the manifest file
     let streams:Vec<_> = manifest.streams.into_iter().filter_map( |x| x.validate(root, args.duration) ).collect();
     let window_size = manifest.window_size;
-    let orchestrator = manifest.orchestrator;
     println!("Sliding Window Size: {}.", window_size);
-    println!("Orchestrator: {:?}.", orchestrator);
-
-    // start broker
-    let mut broker = GlobalBroker::new( orchestrator);
-    let _handle = broker.start();
 
     // spawn the source thread
     let mut sources:HashMap<_,_> = streams.into_iter().map(|stream| {
-        let src = SourceManager::new(stream, window_size, &mut broker);
+        let src = SourceManager::new(stream, window_size);
         let name = src.name.clone();
         (name, src)
     }).collect();

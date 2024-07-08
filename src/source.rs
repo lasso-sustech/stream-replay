@@ -10,7 +10,7 @@ use rand::thread_rng;
 
 use crate::conf::{StreamParam, ConnParams};
 use crate::packet::*;
-use crate::broker::GlobalBroker;
+use crate::dispatcher::UdpDispatcher;
 use crate::throttle::RateThrottler;
 use crate::rtt::{RttRecorder,RttSender};
 use crate::dispatcher::BlockedSignal;
@@ -124,10 +124,13 @@ pub struct SourceManager{
 }
 
 impl SourceManager {
-    pub fn new(stream: StreamParam, window_size:usize, broker:&mut GlobalBroker) -> Self {
+    pub fn new(stream: StreamParam, window_size:usize) -> Self {
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = stream;
         let name = stream.name();
-        let (tx, blocked_signal, tx_part_ctler) = broker.add(params.clone());
+
+        let mut dispatcher = UdpDispatcher::new();
+        let (tx, blocked_signal, tx_part_ctler) = dispatcher.start_new(params.links.clone(), params.tos, params.tx_parts.clone());
+        
         let tx = [tx].into();
         
         let throttler = Arc::new(Mutex::new(
