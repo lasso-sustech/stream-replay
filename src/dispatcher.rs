@@ -1,45 +1,17 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, mpsc};
-use std::thread::{self, JoinHandle};
+use std::sync:: mpsc;
+use std::thread::{self};
 use std::net::ToSocketAddrs;
 use std::time::{Duration, SystemTime};
 use log::trace;
 
 use crate::link::Link;
 
-use crate::packet::{self, any_as_u8_slice, PacketReceiver, PacketSender, PacketStruct, APP_HEADER_LENGTH};
+use crate::packet::{self, any_as_u8_slice, PacketReceiver, PacketStruct, APP_HEADER_LENGTH};
 use crate::socket::{*};
-use crate::tx_part_ctl::TxPartCtler;
 use std::net::UdpSocket;
 
-pub type SourceInput = (PacketSender, Arc<Mutex<TxPartCtler>>);
-
-pub struct UdpDispatcher {
-    handles: Vec<JoinHandle<()>>,
-}
-
-impl UdpDispatcher {
-    pub fn new() -> Self {
-        let handles = Vec::new();
-        Self { handles}
-    }
-
-    pub fn start_new(&mut self, links: Vec<Link>, tos:u8, tx_parts: Vec<f64>) -> SourceInput {
-        let (tx, rx) = mpsc::channel::<PacketStruct>();
-        let tx_part_ctler = Arc::new(Mutex::new(TxPartCtler::new( tx_parts.clone(), links.clone() )));
-        let cloned_tx_part_ctler = Arc::clone(&tx_part_ctler);
-        let handle = thread::spawn(move || {
-            dispatcher_thread(rx, links, tos,  tx_part_ctler)
-        });
-
-        let res = ( tx.clone(), cloned_tx_part_ctler );
-        self.handles.push( handle );
-        res
-    }
-
-}
-
-fn dispatcher_thread(rx: PacketReceiver, links:Vec<Link>, tos:u8,  tx_part_ctler:Arc<Mutex<TxPartCtler>>) {
+pub fn dispatch(links: Vec<Link>, tos:u8) -> HashMap<String, mpsc::Sender<PacketStruct>> {
     // create Hashmap for each tx_ipaddr and set each non blocking
     let mut socket_infos = HashMap::new();
 
@@ -59,41 +31,12 @@ fn dispatcher_thread(rx: PacketReceiver, links:Vec<Link>, tos:u8,  tx_part_ctler
             handles.push(_handle);
         }
         else{
-            let packets:Vec<_> = rx.try_iter().collect();
-            for packet in packets.iter() {
-                let port = packet.port;
-                eprintln!("Socket creation failure: {}:{}@{}.", tx_ipaddr, port, tos);
-                break;
-            }
+            eprintln!("Socket creation failure: ip_addr {} tos {}.", tx_ipaddr, tos);
+            break;
         }
     }
-    // packet sender
-    loop {
-        // fetch bulky packets
-        let packets:Vec<_> = rx.try_iter().collect();
-        if packets.len()==0 {
-            std::thread::sleep( Duration::from_nanos(10_000) );
-            continue;
-        }
-        // prepare packets for each tx_ipaddr
-        tx_part_ctler.lock().unwrap().process_packets(packets)
-        .iter()
-        .for_each(|(tx_ipaddr, packets)| {
-            if let Some(socket_tx) = socket_infos.get(tx_ipaddr) {
-                for packet in packets.iter() {
-                    match packet::get_packet_type(packet.indicators) {
-                        packet::PacketType::DFL | packet::PacketType::SL | packet::PacketType::DSL | packet::PacketType::DSS => {
-                            trace!("Dispatcher: Time {} -> seq {}-offset {}-ip_addr {}", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64() , packet.seq as u32, packet.offset as u16, tx_ipaddr);
-                        }
-                        _ => {}
-                    }
-                    socket_tx.send(packet.clone()).unwrap();
-                }
-            }
-        });
-    }
+    socket_infos
 }
-
 
 fn socket_thread(sock: UdpSocket, rx:PacketReceiver, mut addr:std::net::SocketAddr) {
     loop {

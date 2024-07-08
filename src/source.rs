@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime};
@@ -10,7 +12,7 @@ use rand::thread_rng;
 
 use crate::conf::{StreamParam, ConnParams};
 use crate::packet::*;
-use crate::dispatcher::UdpDispatcher;
+use crate::dispatcher::dispatch;
 use crate::throttle::RateThrottler;
 use crate::rtt::{RttRecorder,RttSender};
 use crate::ipc::Statistics;
@@ -20,7 +22,7 @@ type GuardedThrottler = Arc<Mutex<RateThrottler>>;
 type GuardedTxPartCtler = Arc<Mutex<TxPartCtler>>;
 
 pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtler, rtt_tx: Option<RttSender>,
-    params: ConnParams, tx:PacketSender)
+    params: ConnParams, socket_infos:HashMap<String, Sender<PacketStruct>>)
 {
     let trace: Array2<u64> = read_npy(&params.npy_file).expect("loading failed.");
     let (start_offset, duration) = (params.start_offset, params.duration);
@@ -80,13 +82,22 @@ pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
             stop_time
         };
         
+        
         trace!("Source: Time {} -> seq {}", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64(), template.seq as u32);
         // 3. process queue, aware of blocked status
         while SystemTime::now() < deadline {
             match throttler.lock().unwrap().try_consume(|mut packet| {
                 let time_now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
                 packet.timestamp = time_now;
-                tx.send(packet).unwrap();
+                match tx_part_ctler.lock() {
+                    Ok(controller) => {
+                        let ip_addr = controller.packet_to_ipaddr(packet.indicators.clone());
+                        if let Some(sender) = socket_infos.get(&ip_addr) {
+                            sender.send(packet).unwrap();
+                        }
+                    }
+                    Err(_) => (),
+                }
                 true
             }) {
                 Some(_) => continue,
@@ -115,7 +126,7 @@ pub struct SourceManager{
     rtt: Option<RttRecorder>,
     tx_part_ctler: Arc<Mutex<TxPartCtler>>,
     //
-    tx: Vec<PacketSender>,
+    socket_infos: Vec<HashMap<String, Sender<PacketStruct>>>,
 }
 
 impl SourceManager {
@@ -123,10 +134,8 @@ impl SourceManager {
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = stream;
         let name = stream.name();
 
-        let mut dispatcher = UdpDispatcher::new();
-        let (tx, tx_part_ctler) = dispatcher.start_new(params.links.clone(), params.tos, params.tx_parts.clone());
+        let socket_infos = vec![dispatch(params.links.clone(), params.tos)].into();
         
-        let tx = [tx].into();
         
         let throttler = Arc::new(Mutex::new(
             RateThrottler::new(name.clone(), params.throttle, window_size, params.no_logging, params.loops != usize::MAX)
@@ -137,10 +146,14 @@ impl SourceManager {
             true => Some( RttRecorder::new( &name, params.port, link_num ) )
         };
 
+        let tx_part_ctler = Arc::new(Mutex::new(
+            TxPartCtler::new(params.tx_parts.clone(), params.links.clone())
+        ));
+
         let start_timestamp = SystemTime::now();
         let stop_timestamp = SystemTime::now();
 
-        Self{ name, stream, throttler, rtt, tx_part_ctler, tx, start_timestamp, stop_timestamp }
+        Self{ name, stream, throttler, rtt, tx_part_ctler, socket_infos, start_timestamp, stop_timestamp }
     }
 
     pub fn throttle(&self, throttle:f64) {
@@ -187,13 +200,14 @@ impl SourceManager {
         };
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = self.stream;
         let params = params.clone();
-        let tx = self.tx.pop().unwrap();
 
         let _now = SystemTime::now();
         self.start_timestamp = _now + Duration::from_secs_f64( params.duration[0] );
         self.stop_timestamp = _now + Duration::from_secs_f64( params.duration[1] );
+
+        let socket_infos = self.socket_infos.pop().unwrap();
         let source = thread::spawn(move || {
-            source_thread(throttler, tx_part_ctler, rtt_tx, params, tx)
+            source_thread(throttler, tx_part_ctler, rtt_tx, params, socket_infos);
         });
 
         println!("{}. {} on ...", index, self.stream);

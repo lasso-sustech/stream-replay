@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use crate::packet::{self, PacketStruct, PacketType};
+use crate::packet::{self, PacketType};
 use crate::link::Link;
 
 type OffsetPacket = (u16, PacketType);
@@ -98,45 +97,8 @@ impl TxPartCtler {
         results
     }
 
-    pub fn process_packets(&self, mut packets: Vec<PacketStruct>) -> HashMap::<String, Vec<PacketStruct>> {
-        let mut part_packets = HashMap::<String, Vec<PacketStruct>>::new();
-        
-        // Process packets for the first part
-        // TODO: modify transimission order for sinlge packet case
-        let mut i = 0;
-        while i < packets.len() {
-            let tx_ipaddr = self.tx_ipaddrs[0].clone();
-            match packet::channel_info(packets[i].indicators) {
-                0 => {
-                    let packet = packets.remove(i);
-                    part_packets.entry(tx_ipaddr)
-                        .or_insert_with(Vec::new)
-                        .push(packet);
-                }
-                _ => {
-                    i += 1;
-                }
-            }
-        }
-
-        if self.tx_parts.len() < 2 {
-            return part_packets;
-        }
-
-        // Process packets for the second part
-        let mut i = packets.len();
-        while i > 0 {
-            i -= 1;
-            let tx_ipaddr = self.tx_ipaddrs[1].clone();
-            match packet::channel_info(packets[i].indicators) {
-                _ => {
-                    let packet = packets.remove(i);
-                    part_packets.entry(tx_ipaddr)
-                        .or_insert_with(Vec::new)
-                        .push(packet);
-                }
-            }
-        }
-        part_packets
+    pub fn packet_to_ipaddr(&self, indicator: u8) -> String {
+        let channel = packet::channel_info(indicator);
+        self.tx_ipaddrs[channel as usize].clone()
     }
 }
