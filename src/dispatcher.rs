@@ -125,6 +125,7 @@ fn socket_thread(sock: UdpSocket, rx:PacketReceiver, blocked_signal:BlockedSigna
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         *_signal = true;
+                        std::thread::sleep( Duration::from_nanos(10_000) );
                         continue // block occurs
                     }
                     Err(e) => panic!("encountered IO error: {e}")

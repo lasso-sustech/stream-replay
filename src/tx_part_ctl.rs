@@ -1,9 +1,6 @@
 use std::collections::HashMap;
-use std::time::SystemTime;
 use crate::packet::{self, PacketStruct, PacketType};
 use crate::link::Link;
-
-use log::trace;
 
 type OffsetPacket = (u16, PacketType);
 #[derive(Debug)]

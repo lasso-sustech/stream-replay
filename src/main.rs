@@ -14,7 +14,7 @@ mod logger;
 
 use std::collections::HashMap;
 use std::path::Path;
-use log::{info};
+use log::info;
 use logger::init_log;
 use std::time::SystemTime;
 // use std::rc::Rc;
