@@ -7,6 +7,7 @@ pub struct Statistics {
     pub rtt: f64,
     pub channel_rtts: Vec<f64>,
     pub throughput: f64,
+    pub tx_parts: Vec<f64>,
 }
 
 #[derive(Serialize, Deserialize, Debug,Clone)]

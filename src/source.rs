@@ -187,8 +187,15 @@ impl SourceManager {
                 Some(ref rtt) => rtt.rtt_records.lock().unwrap().statistic()
             }
         };
+
+        let tx_parts = {
+            match self.tx_part_ctler.lock() {
+                Err(_) => return None,
+                Ok(tx_part_ctler) => tx_part_ctler.tx_parts.clone()
+            }
+        };
         
-        Some( Statistics{rtt, channel_rtts,throughput} )
+        Some( Statistics{rtt, channel_rtts,throughput, tx_parts} )
     }
 
     pub fn start(&mut self, index:usize, tx_ipaddr:String) -> JoinHandle<()> {

@@ -4,7 +4,7 @@ use crate::link::Link;
 type OffsetPacket = (u16, PacketType);
 #[derive(Debug)]
 pub struct TxPartCtler {
-    tx_parts: Vec<f64>,
+    pub tx_parts: Vec<f64>,
     tx_ipaddrs: Vec<String>,
 }
 
