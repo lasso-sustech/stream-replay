@@ -100,7 +100,7 @@ impl TxPartCtler {
     pub fn packet_to_ipaddr(&self, indicator: u8) -> String {
 
         let channel = {
-            if self.tx_parts[0] <= 0.0 {
+            if self.tx_parts.len() >= 2 &&self.tx_parts[0] <= 0.0 {
                 1 as u8
             }
             else {
