@@ -86,7 +86,7 @@ impl TxPartCtler {
             }
         } else {
             for offset in 0..num {
-                if let Some(packet_type) = self.get_packet_state(offset as f64, num, 1) {
+                if let Some(packet_type) = self.get_packet_state(offset as f64, num, 1)  {
                     results[1].push((offset as u16, packet_type));
                 }
                 if let Some(packet_type) = self.get_packet_state(offset as f64, num, 2) {
@@ -98,7 +98,16 @@ impl TxPartCtler {
     }
 
     pub fn packet_to_ipaddr(&self, indicator: u8) -> String {
-        let channel = packet::channel_info(indicator);
+
+        let channel = {
+            if self.tx_parts[0] <= 0.0 {
+                1 as u8
+            }
+            else {
+                packet::channel_info(indicator)
+            }
+        };
+
         self.tx_ipaddrs[channel as usize].clone()
     }
 }
