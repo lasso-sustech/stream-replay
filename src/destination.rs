@@ -17,6 +17,8 @@ pub struct Args {
     pub duration: u32,
     pub calc_rtt : bool,
     pub rx_mode: bool,
+    #[clap(long)]
+    pub src_ipaddrs: Vec<String>,
 }
 #[derive(Default)]
 struct RecvOffsets {
@@ -219,7 +221,7 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                     }
                     
                     if  _record.is_fst_ack() || _record.is_scd_ack() {
-                        let packet_type = if _record.is_fst_ack() {
+                        let packet_type = if src_addr.ip().to_string() == args.src_ipaddrs[0]{
                             trace!("ACKFirst: Time {} -> seq: {}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64(), seq);
                             _record.is_ack.0 = true;
                             PacketType::DFL
