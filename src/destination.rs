@@ -228,7 +228,11 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                             let packet_type = if src_addr.ip().to_string() == args.src_ipaddrs[0]{
                                 trace!("ACKFirst: Time {} -> seq: {}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64(), seq);
                                 _record.is_ack.0 = true;
-                                PacketType::DFL
+                                if _record.is_complete() {
+                                    PacketType::SL
+                                } else {
+                                    PacketType::DFL
+                                }
                             } else {
                                 trace!("ACKSecond: Time {} -> seq: {}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64(), seq);
                                 _record.is_ack.1 = true;
