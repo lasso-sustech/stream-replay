@@ -160,7 +160,7 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
     let socket = UdpSocket::bind(&addr).unwrap();
     socket.set_nonblocking(true).unwrap();
 
-    let addr = format!("0.0.0.0:0");
+    let addr = format!("0.0.0.0");
     // let pong_socket = UdpSocket::bind(&addr).unwrap();
     let pong_socket = create_udp_socket(192, addr.clone());
     if let Some(pong_socket) = pong_socket {
