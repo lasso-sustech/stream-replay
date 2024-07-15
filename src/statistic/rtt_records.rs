@@ -15,7 +15,7 @@ impl RTTEntry {
             seq,
             rtt: 0.0,
             channel_rtts: vec![None; max_links],
-            visited_rtt: vec![false; max_links],
+            visited_rtt: vec![false; max_links + 1],
             completed: false,
         }
     }
@@ -86,12 +86,10 @@ impl RttRecords {
         let mut count = vec![0; self.max_links + 1];
         for entry in &mut self.queue {
             if let Some(ref mut entry) = entry {
-                count[0] += 1;
-                rtt_sum += entry.rtt;
                 for (i, rtt_opt) in entry.channel_rtts.iter().enumerate() {
                     if let Some(rtt) = rtt_opt{
-                        if !entry.visited_rtt[i]{
-                            entry.visited_rtt[i] = true;
+                        if !entry.visited_rtt[i + 1]{
+                            entry.visited_rtt[i + 1] = true;
                             channel_rtts[i] += rtt;
                             if rtt > &self.target_rtt {
                                 outages[i] += 1;
@@ -100,7 +98,12 @@ impl RttRecords {
                         }
                     }
                 }
-        }
+                if entry.completed && !entry.visited_rtt[0] {
+                    rtt_sum += entry.rtt;
+                    count[0] += 1;
+                    entry.visited_rtt[0] = true;
+                }
+            }
         }
         let rtt_avg = if count[0] == 0 {
             0.0
