@@ -1,6 +1,7 @@
 mod packet;
 mod destination;
 mod logger;
+mod socket;
 
 
 use std::sync::{mpsc, Arc, Mutex};
