@@ -229,14 +229,18 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
                                 trace!("ACKFirst: Time {} -> seq: {}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64(), seq);
                                 _record.is_ack.0 = true;
                                 if _record.is_complete() {
-                                    PacketType::SL
+                                    PacketType::SLFL
                                 } else {
                                     PacketType::DFL
                                 }
                             } else {
                                 trace!("ACKSecond: Time {} -> seq: {}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64(), seq);
                                 _record.is_ack.1 = true;
-                                PacketType::DSL
+                                if _record.is_complete() {
+                                    PacketType::SLSL
+                                } else {
+                                    PacketType::DSL
+                                }
                             };
                             buffer[18..19].copy_from_slice(packet::to_indicator(packet_type).to_le_bytes().as_ref());
                             let ping_addr = format!("{}:{}", src_addr.ip(), args.port + PONG_PORT_INC);

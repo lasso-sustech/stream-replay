@@ -23,8 +23,12 @@ impl RTTEntry {
     fn update_value(&mut self, channel: PacketType, value: f64)  {
         self.rtt = value;
         match channel {
-            PacketType::SL => {
+            PacketType::SLFL => {
                 self.channel_rtts[0] = Some(value);
+                self.completed = true;
+            },
+            PacketType::SLSL => {
+                self.channel_rtts[1] = Some(value);
                 self.completed = true;
             },
             PacketType::DFL => {

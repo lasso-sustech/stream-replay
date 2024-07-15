@@ -26,7 +26,9 @@ pub enum PacketType {
     DSS,
     DSF,
     DSM,
-    DSL
+    DSL,
+    SLFL,
+    SLSL,
 }
 
 #[repr(C,packed)]
@@ -88,6 +90,8 @@ pub fn to_indicator(packet_type: PacketType) -> u8 {
         PacketType::DSF =>  0b00000101,
         PacketType::DSM =>  0b00000110,
         PacketType::DSL =>  0b00000111,
+        PacketType::SLFL => 0b00001000,
+        PacketType::SLSL => 0b00001100,
     }
 }
 pub fn get_packet_type(indicators: u8) -> PacketType {
@@ -100,6 +104,8 @@ pub fn get_packet_type(indicators: u8) -> PacketType {
         0b00000101 => PacketType::DSF,
         0b00000110 => PacketType::DSM,
         0b00000111 => PacketType::DSL,
+        0b00001000 => PacketType::SLFL,
+        0b00001100 => PacketType::SLSL,
         _ => panic!("Invalid packet type")
     }
 }
