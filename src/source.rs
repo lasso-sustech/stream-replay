@@ -141,9 +141,10 @@ impl SourceManager {
             RateThrottler::new(name.clone(), params.throttle, window_size, params.no_logging, params.loops != usize::MAX)
         ));
         let link_num = params.links.len();
+        let target_rtt = params.target_rtt;
         let rtt =  match params.calc_rtt {
             false => None,
-            true => Some( RttRecorder::new( &name, params.port, link_num ) )
+            true => Some( RttRecorder::new( &name, params.port, link_num, target_rtt) )
         };
 
         let tx_part_ctler = Arc::new(Mutex::new(
@@ -181,7 +182,7 @@ impl SourceManager {
             }
         };
 
-        let (rtt, channel_rtts) = {
+        let (rtt, channel_rtts, outage_rates) = {
             match self.rtt {
                 None => return None,
                 Some(ref rtt) => rtt.rtt_records.lock().unwrap().statistic()
@@ -195,7 +196,7 @@ impl SourceManager {
             }
         };
         
-        Some( Statistics{rtt, channel_rtts,throughput, tx_parts} )
+        Some( Statistics{rtt, channel_rtts, outage_rates, throughput, tx_parts} )
     }
 
     pub fn start(&mut self, index:usize, tx_ipaddr:String) -> JoinHandle<()> {

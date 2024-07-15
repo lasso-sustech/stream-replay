@@ -59,12 +59,12 @@ fn pong_recv_thread(name: String, port: u16, seq_records: GuardedSeqRecords, rtt
 }
 
 impl RttRecorder {
-    pub fn new(name:&String, port:u16, mul_link_num: usize) -> Self {
+    pub fn new(name:&String, port:u16, mul_link_num: usize, target_rtt: f64) -> Self {
         let name = name.clone();
         let port = port + PONG_PORT_INC; //pong recv port
         let record_handle = None;
         let recv_handle = None;
-        let rtt_records = Arc::new(Mutex::new(RttRecords::new(1000, mul_link_num)));
+        let rtt_records = Arc::new(Mutex::new(RttRecords::new(1000, mul_link_num, target_rtt)));
         RttRecorder{ name, port, record_handle, recv_handle, rtt_records }
     }
 

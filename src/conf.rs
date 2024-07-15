@@ -18,6 +18,8 @@ pub struct ConnParams {
     pub duration: [f64; 2],                 //         [0.0, +inf]
     #[serde(default = "_random_value")]     //default:
     pub start_offset: usize,                //         <random>
+    #[serde(default = "_random_value")]     //default:
+    pub target_rtt: f64,                    //         <random>
     #[serde(default = "_default_loops")]    //default:
     pub loops: usize,                       //         +inf
     #[serde(default)] pub tos: u8,          //default: 0
