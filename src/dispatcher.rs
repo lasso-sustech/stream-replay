@@ -42,7 +42,7 @@ fn socket_thread(sock: UdpSocket, rx:PacketReceiver, mut addr:std::net::SocketAd
     loop {
         let packets:Vec<_> = rx.try_iter().collect();
         if packets.len()==0 {
-            std::thread::sleep( Duration::from_nanos(10_000) );
+            // std::thread::sleep( Duration::from_nanos(10_000) );
             continue;
         }
         for packet in packets.iter() {
@@ -61,7 +61,7 @@ fn socket_thread(sock: UdpSocket, rx:PacketReceiver, mut addr:std::net::SocketAd
                         break
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        std::thread::sleep( Duration::from_nanos(10_000) );
+                        // std::thread::sleep( Duration::from_nanos(10_000) );
                         continue // block occurs
                     }
                     Err(e) => panic!("encountered IO error: {e}")
