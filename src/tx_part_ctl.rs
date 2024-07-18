@@ -95,7 +95,7 @@ impl TxPartCtler {
             }
         }
         // inverse results[2]
-        // results[2].reverse();
+        results[2].reverse();
         results
     }
 
