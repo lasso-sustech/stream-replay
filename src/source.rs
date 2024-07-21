@@ -170,33 +170,23 @@ impl SourceManager {
     }
 
     pub fn statistics(&self) -> Option<Statistics> {
-        let _now = SystemTime::now();
-        if _now<self.start_timestamp || _now>self.stop_timestamp {
+        let now = SystemTime::now();
+        if now < self.start_timestamp || now > self.stop_timestamp {
             return None;
         }
-
-        let throughput = {
-            match self.throttler.lock() {
-                Err(_) => return None,
-                Ok(throttler) => throttler.last_rate
-            }
+    
+        let throughput = self.throttler.lock().ok()?.last_rate;
+    
+        let (rtt, channel_rtts, outage_rates) = if let Some(ref rtt) = self.rtt {
+            let stats = rtt.rtt_records.lock().unwrap().statistic();
+            (Some(stats.0), Some(stats.1), Some(stats.2))
+        } else {
+            (None, None, None)
         };
-
-        let (rtt, channel_rtts, outage_rates) = {
-            match self.rtt {
-                None => return None,
-                Some(ref rtt) => rtt.rtt_records.lock().unwrap().statistic()
-            }
-        };
-
-        let tx_parts = {
-            match self.tx_part_ctler.lock() {
-                Err(_) => return None,
-                Ok(tx_part_ctler) => tx_part_ctler.tx_parts.clone()
-            }
-        };
-        
-        Some( Statistics{rtt, channel_rtts, outage_rates, throughput, tx_parts} )
+    
+        let tx_parts = self.tx_part_ctler.lock().ok()?.tx_parts.clone();
+    
+        Some(Statistics { rtt, channel_rtts, outage_rates, throughput, tx_parts })
     }
 
     pub fn start(&mut self, index:usize, tx_ipaddr:String) -> JoinHandle<()> {
