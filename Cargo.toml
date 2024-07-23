@@ -5,15 +5,11 @@ edition = "2021"
 
 [[bin]]
 name = "stream-replay"
-path = "src/main.rs"
+path = "src/tx/main.rs"
 
 [[bin]]
 name = "stream-replay-rx"
-path = "src/rx.rs"
-
-[lib]
-name = "replay"
-crate-type = ["cdylib"]
+path = "src/rx/main.rs"
 
 [dependencies]
 rand = "0.8.5"

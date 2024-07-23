@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::sync:: mpsc;
 use std::thread::{self};
 use std::net::ToSocketAddrs;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use log::trace;
 
 use crate::link::Link;
 
-use crate::packet::{self, any_as_u8_slice, PacketReceiver, PacketStruct, APP_HEADER_LENGTH};
-use crate::socket::{*};
+use stream_replay::core::packet::{self, any_as_u8_slice, PacketReceiver, PacketStruct, APP_HEADER_LENGTH};
+use stream_replay::core::socket::{*};
 use std::net::UdpSocket;
 
 pub fn dispatch(links: Vec<Link>, tos:u8) -> HashMap<String, mpsc::Sender<PacketStruct>> {

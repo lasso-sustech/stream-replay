@@ -1,4 +1,4 @@
-use crate::packet::PacketType;
+use stream_replay::core::packet::PacketType;
 
 #[derive(Debug, Clone)]
 struct RTTEntry {

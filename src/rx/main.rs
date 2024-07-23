@@ -1,13 +1,9 @@
-mod packet;
 mod destination;
-mod logger;
-mod socket;
-
 
 use std::sync::{mpsc, Arc, Mutex};
 use clap::Parser;
 use crate::destination::*;
-use crate::logger::init_log;
+use stream_replay::core::logger::init_log;
 
 fn main() {
     init_log(true);

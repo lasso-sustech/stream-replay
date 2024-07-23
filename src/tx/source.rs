@@ -11,7 +11,7 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 
 use crate::conf::{StreamParam, ConnParams};
-use crate::packet::*;
+use stream_replay::core::packet::*;
 use crate::dispatcher::dispatch;
 use crate::throttle::RateThrottler;
 use crate::rtt::{RttRecorder,RttSender};

@@ -7,9 +7,8 @@ use clap::Parser;
 use log::trace;
 use std::io::ErrorKind;
 
-use crate::packet::{self, PacketStruct, PacketType};
-
-use crate::socket::{*};
+use stream_replay::core::packet::{self, PacketStruct, PacketType};
+use stream_replay::core::socket::{*};
 
 const PONG_PORT_INC: u16 = 1024;
 

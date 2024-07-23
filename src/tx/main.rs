@@ -1,20 +1,18 @@
 mod conf;
-mod packet;
 mod throttle;
 mod source;
 mod dispatcher;
 mod rtt;
-mod socket;
 mod ipc;
 mod tx_part_ctl;
 mod link;
 mod statistic;
-mod logger;
 
 use std::collections::HashMap;
 use std::path::Path;
 use log::info;
-use logger::init_log;
+
+use stream_replay::core::logger::init_log;
 use std::time::SystemTime;
 // use std::rc::Rc;
 
