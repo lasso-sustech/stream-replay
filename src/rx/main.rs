@@ -1,5 +1,6 @@
 mod destination;
 mod record;
+mod statistic;
 
 use std::sync::{mpsc, Arc, Mutex};
 use clap::Parser;
@@ -41,5 +42,6 @@ fn main() {
     let recv_data = recv_data_final.lock().unwrap();
     let non_received = recv_data.last_seq - recv_data.recevied;
     println!("Packet loss rate: {:.5}", non_received as f64 / recv_data.last_seq as f64);
+    println!("Stuttering rate: {:.5}", recv_data.stutter.get_stuttering());
 }
 

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::mpsc::Sender;
 use stream_replay::core::packet::{self, PacketStruct, PacketType};
 
+use crate::statistic::stuttering::Stutter;
 #[derive(Default)]
 struct RecvOffsets {
     sl: Option<u16>,
@@ -19,6 +20,31 @@ struct RecvComplete {
 }
 
 type IsACK = (bool, bool);
+
+pub struct RecvData{
+    pub recv_records: HashMap<u32, RecvRecord>,
+    pub last_seq: u32,
+    pub recevied: u32,
+    pub data_len: u32,
+    pub rx_start_time: f64,
+    pub stutter: Stutter,
+    pub tx: Option<Sender<Vec<u8>>>
+}
+
+impl RecvData{
+    pub fn new() -> Self{
+        Self{
+            recv_records: HashMap::new(),
+            last_seq: 0,
+            recevied: 0,
+            data_len: 0,
+            rx_start_time: 0.0,
+            stutter: Stutter::new(),
+            tx: None,
+        }
+    }
+}
+
 
 pub struct RecvRecord {
     pub packets: HashMap<u16, PacketStruct>, // Use a HashMap to store packets by their offset
@@ -96,27 +122,5 @@ impl RecvRecord {
             data.extend_from_slice(&packet.payload[ ..packet.length as usize]);
         }
         return data;
-    }
-}
-
-pub struct RecvData{
-    pub recv_records: HashMap<u32, RecvRecord>,
-    pub last_seq: u32,
-    pub recevied: u32,
-    pub data_len: u32,
-    pub rx_start_time: f64,
-    pub tx: Option<Sender<Vec<u8>>>
-}
-
-impl RecvData{
-    pub fn new() -> Self{
-        Self{
-            recv_records: HashMap::new(),
-            last_seq: 0,
-            recevied: 0,
-            data_len: 0,
-            rx_start_time: 0.0,
-            tx: None,
-        }
     }
 }
