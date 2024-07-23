@@ -165,6 +165,9 @@ impl SourceManager {
 
     pub fn set_tx_parts(&self, tx_parts:Vec<f64>) {
         if let Ok(ref mut tx_part_ctler) = self.tx_part_ctler.lock() {
+            if tx_parts.len() != tx_part_ctler.tx_parts.len() {
+                return;
+            }
             tx_part_ctler.set_tx_parts(tx_parts);
         }
     }
