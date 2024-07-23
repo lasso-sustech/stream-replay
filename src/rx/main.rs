@@ -1,7 +1,9 @@
 mod destination;
+mod record;
 
 use std::sync::{mpsc, Arc, Mutex};
 use clap::Parser;
+use record::RecvData;
 use crate::destination::*;
 use stream_replay::core::logger::init_log;
 
