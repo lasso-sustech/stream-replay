@@ -177,16 +177,16 @@ impl SourceManager {
     
         let throughput = self.throttler.lock().ok()?.last_rate;
     
-        let (rtt, channel_rtts, outage_rates) = if let Some(ref rtt) = self.rtt {
+        let (rtt, channel_rtts, outage_rate, ch_outage_rates) = if let Some(ref rtt) = self.rtt {
             let stats = rtt.rtt_records.lock().unwrap().statistic();
-            (Some(stats.0), Some(stats.1), Some(stats.2))
+            (Some(stats.0), Some(stats.1), Some(stats.2), Some(stats.3))
         } else {
-            (None, None, None)
+            (None, None, None, None)
         };
     
         let tx_parts = self.tx_part_ctler.lock().ok()?.tx_parts.clone();
     
-        Some(Statistics { rtt, channel_rtts, outage_rates, throughput, tx_parts })
+        Some(Statistics { rtt, channel_rtts, outage_rate, ch_outage_rates, throughput, tx_parts })
     }
 
     pub fn start(&mut self, index:usize, tx_ipaddr:String) -> JoinHandle<()> {

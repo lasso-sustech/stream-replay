@@ -82,10 +82,11 @@ impl RttRecords {
         self.queue[index].as_ref().unwrap().completed
     }
 
-    pub fn statistic(&mut self) -> (f64, Vec<f64>, Vec<f64>) {
+    pub fn statistic(&mut self) -> (f64, Vec<f64>, f64, Vec<f64>) {
         //get the average rtt and list of average channel rtt
         let mut rtt_sum = 0.0;
-        let mut outages = vec![0; self.max_links];
+        let mut outages = 0.0;
+        let mut ch_outages = vec![0; self.max_links];
         let mut channel_rtts = vec![0.0; self.max_links];
         let mut count = vec![0; self.max_links + 1];
         for entry in &mut self.queue {
@@ -96,7 +97,7 @@ impl RttRecords {
                             entry.visited_rtt[i + 1] = true;
                             channel_rtts[i] += rtt;
                             if rtt > &self.target_rtt {
-                                outages[i] += 1;
+                                ch_outages[i] += 1;
                             }
                             count[i + 1] += 1;
                         }
@@ -104,6 +105,9 @@ impl RttRecords {
                 }
                 if entry.completed && !entry.visited_rtt[0] {
                     rtt_sum += entry.rtt;
+                    if entry.rtt > self.target_rtt {
+                        outages += 1.0;
+                    }
                     count[0] += 1;
                     entry.visited_rtt[0] = true;
                 }
@@ -115,7 +119,13 @@ impl RttRecords {
             rtt_sum / count[0] as f64
         };
 
-        let outage_rate: Vec<f64> = outages
+        let outage_rate = if count[0] == 0 {
+            0.0
+        } else {
+            outages / count[0] as f64
+        };
+
+        let ch_outage_rates: Vec<f64> = ch_outages
             .iter()
             .enumerate()
             .map(|(i, &x)| if count[i + 1] == 0 { 0.0 } else { x as f64 / count[i + 1] as f64 })
@@ -127,6 +137,6 @@ impl RttRecords {
             .map(|(i, &x)| if count[i + 1] == 0 { 0.0 } else { x / count[i + 1] as f64 })
             .collect();
 
-        (rtt_avg, channel_rtts_avg, outage_rate)
+        (rtt_avg, channel_rtts_avg, outage_rate, ch_outage_rates)
     }
 }

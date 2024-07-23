@@ -6,7 +6,8 @@ use crate::source::SourceManager;
 pub struct Statistics {
     pub rtt: Option<f64>,
     pub channel_rtts: Option<Vec<f64>>,
-    pub outage_rates: Option<Vec<f64>>,
+    pub outage_rate : Option<f64>,
+    pub ch_outage_rates: Option<Vec<f64>>,
     pub throughput: f64,
     pub tx_parts: Vec<f64>,
 }
