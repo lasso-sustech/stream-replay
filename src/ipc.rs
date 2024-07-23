@@ -10,6 +10,7 @@ pub struct Statistics {
     pub ch_outage_rates: Option<Vec<f64>>,
     pub throughput: f64,
     pub tx_parts: Vec<f64>,
+    pub throttle: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug,Clone)]

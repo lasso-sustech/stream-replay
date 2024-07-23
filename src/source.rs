@@ -179,6 +179,7 @@ impl SourceManager {
         }
     
         let throughput = self.throttler.lock().ok()?.last_rate;
+        let throttle = self.throttler.lock().ok()?.throttle;
     
         let (rtt, channel_rtts, outage_rate, ch_outage_rates) = if let Some(ref rtt) = self.rtt {
             let stats = rtt.rtt_records.lock().unwrap().statistic();
@@ -188,8 +189,10 @@ impl SourceManager {
         };
     
         let tx_parts = self.tx_part_ctler.lock().ok()?.tx_parts.clone();
+
+        
     
-        Some(Statistics { rtt, channel_rtts, outage_rate, ch_outage_rates, throughput, tx_parts })
+        Some(Statistics { rtt, channel_rtts, outage_rate, ch_outage_rates, throughput, tx_parts, throttle })
     }
 
     pub fn start(&mut self, index:usize, tx_ipaddr:String) -> JoinHandle<()> {
