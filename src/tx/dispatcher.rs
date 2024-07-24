@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync:: mpsc;
 use std::thread::{self};
 use std::net::ToSocketAddrs;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use log::trace;
 
 use crate::link::Link;
@@ -39,10 +39,14 @@ pub fn dispatch(links: Vec<Link>, tos:u8) -> HashMap<String, mpsc::Sender<Packet
 }
 
 fn socket_thread(sock: UdpSocket, rx:PacketReceiver, mut addr:std::net::SocketAddr) {
+
+    let spin_sleeper = spin_sleep::SpinSleeper::new(10_000)
+    .with_spin_strategy(spin_sleep::SpinStrategy::YieldThread);
+
     loop {
         let packets:Vec<_> = rx.try_iter().collect();
         if packets.len()==0 {
-            // std::thread::sleep( Duration::from_nanos(10_000) );
+            spin_sleeper.sleep(Duration::from_nanos(100_000));
             continue;
         }
         for packet in packets.iter() {
@@ -61,7 +65,7 @@ fn socket_thread(sock: UdpSocket, rx:PacketReceiver, mut addr:std::net::SocketAd
                         break
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        // std::thread::sleep( Duration::from_nanos(10_000) );
+                        spin_sleeper.sleep(Duration::from_nanos(100_000));
                         continue // block occurs
                     }
                     Err(e) => panic!("encountered IO error: {e}")
