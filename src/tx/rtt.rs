@@ -3,7 +3,7 @@ use std::io::prelude::*;
 use std::collections::HashMap;
 use std::net::UdpSocket;
 use std::thread::{self, JoinHandle};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use stream_replay::core::packet;
@@ -13,8 +13,8 @@ type SeqRecords = HashMap<u32,f64>;
 type GuardedSeqRecords = Arc<Mutex<SeqRecords>>;
 
 type GuardedRttRecords = Arc<Mutex<RttRecords>>;
-pub type RttSender = mpsc::Sender<u32>;
-type RttReceiver = mpsc::Receiver<u32>;
+pub type RttSender = flume::Sender<u32>;
+type RttReceiver = flume::Receiver<u32>;
 static PONG_PORT_INC:u16 = 1024;
 
 pub struct RttRecorder {
@@ -69,7 +69,8 @@ impl RttRecorder {
     }
 
     pub fn start(&mut self,tx_ipaddr:String) -> RttSender {
-        let (tx, rx) = mpsc::channel::<u32>();
+        // let (tx, rx) = mpsc::channel::<u32>();
+        let (tx, rx) = flume::unbounded::<u32>();
         let (name, port) = (self.name.clone(), self.port);
         let seq_records1: GuardedSeqRecords = Arc::new(Mutex::new(HashMap::new()));
         let seq_records2 = seq_records1.clone();

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync:: mpsc;
 use std::thread::{self};
 use std::net::ToSocketAddrs;
 use std::time::{Duration, SystemTime};
@@ -11,7 +10,7 @@ use stream_replay::core::packet::{self, any_as_u8_slice, PacketReceiver, PacketS
 use stream_replay::core::socket::{*};
 use std::net::UdpSocket;
 
-pub fn dispatch(links: Vec<Link>, tos:u8) -> HashMap<String, mpsc::Sender<PacketStruct>> {
+pub fn dispatch(links: Vec<Link>, tos:u8) -> HashMap<String, flume::Sender<PacketStruct>> {
     // create Hashmap for each tx_ipaddr and set each non blocking
     let mut socket_infos = HashMap::new();
 
@@ -20,7 +19,7 @@ pub fn dispatch(links: Vec<Link>, tos:u8) -> HashMap<String, mpsc::Sender<Packet
         let tx_ipaddr = link.tx_ipaddr.clone();
         let rx_addr =  format!("{}:0",link.rx_ipaddr.clone()).to_socket_addrs().unwrap().next().unwrap();
         let socket = create_udp_socket(tos, tx_ipaddr.clone());
-        let (socket_tx, socket_rx) = mpsc::channel::<PacketStruct>();
+        let (socket_tx, socket_rx) = flume::unbounded::<PacketStruct>();
         if let Some(socket) = socket {
             socket.set_nonblocking(true).unwrap();
             socket_infos.insert(tx_ipaddr.clone(),  socket_tx );

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime};
@@ -20,9 +19,10 @@ use crate::tx_part_ctl::TxPartCtler;
 
 type GuardedThrottler = Arc<Mutex<RateThrottler>>;
 type GuardedTxPartCtler = Arc<Mutex<TxPartCtler>>;
+type SokcetInfo = HashMap<String, flume::Sender<PacketStruct>>;
 
 pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtler, rtt_tx: Option<RttSender>,
-    params: ConnParams, socket_infos:HashMap<String, Sender<PacketStruct>>)
+    params: ConnParams, socket_infos:SokcetInfo)
 {
     let trace: Array2<u64> = read_npy(&params.npy_file).expect("loading failed.");
     let (start_offset, duration) = (params.start_offset, params.duration);
@@ -126,7 +126,7 @@ pub struct SourceManager{
     rtt: Option<RttRecorder>,
     tx_part_ctler: Arc<Mutex<TxPartCtler>>,
     //
-    socket_infos: Vec<HashMap<String, Sender<PacketStruct>>>,
+    socket_infos: Vec<SokcetInfo>,
 }
 
 impl SourceManager {
