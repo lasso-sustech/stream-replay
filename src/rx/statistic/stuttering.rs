@@ -36,7 +36,9 @@ impl Stutter {
         if stuttering == 0.0 {
             return 0.0;
         }
-        stuttering / (self.ack_times.len() as f64 - 1.0)
+
+
+        stuttering / (self.end_time - self.start_time)
     }
 
 }
