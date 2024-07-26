@@ -28,7 +28,7 @@ impl Stutter {
         }
         let mut stuttering = 0.0;
         for i in 1..self.ack_times.len() {
-            let diff = self.ack_times[i] - self.ack_times[i - 1] - 0.032;
+            let diff = self.ack_times[i] - self.ack_times[i - 1] - 0.016;
             if diff > 0.0 {
                 stuttering += diff;
             }
