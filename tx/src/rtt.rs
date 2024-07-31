@@ -6,7 +6,7 @@ use std::thread::{self, JoinHandle};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
-use stream_replay::core::packet;
+use core::packet;
 use crate::statistic::rtt_records::RttRecords;
 
 type SeqRecords = HashMap<u32,f64>;

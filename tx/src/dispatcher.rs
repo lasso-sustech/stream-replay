@@ -6,8 +6,8 @@ use log::trace;
 
 use crate::link::Link;
 
-use stream_replay::core::packet::{self, any_as_u8_slice, PacketReceiver, PacketStruct, APP_HEADER_LENGTH};
-use stream_replay::core::socket::{*};
+use core::packet::{self, any_as_u8_slice, PacketReceiver, PacketStruct, APP_HEADER_LENGTH};
+use core::socket::{*};
 use std::net::UdpSocket;
 
 pub fn dispatch(links: Vec<Link>, tos:u8) -> HashMap<String, flume::Sender<PacketStruct>> {

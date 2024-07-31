@@ -1,7 +1,7 @@
 use log::trace;
 use std::time::SystemTime;
 use std::collections::VecDeque;
-use stream_replay::core::packet::{PacketStruct,UDP_MAX_LENGTH};
+use core::packet::{PacketStruct,UDP_MAX_LENGTH};
 // use std::sync::{Arc, Mutex};
 
 type TIME = SystemTime;

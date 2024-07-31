@@ -9,8 +9,8 @@ use log::trace;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
+use core::packet::*;
 use crate::conf::{StreamParam, ConnParams};
-use stream_replay::core::packet::*;
 use crate::dispatcher::dispatch;
 use crate::throttle::RateThrottler;
 use crate::rtt::{RttRecorder,RttSender};

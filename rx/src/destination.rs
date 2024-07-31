@@ -5,8 +5,8 @@ use log::trace;
 use std::io::ErrorKind;
 
 use crate::record::{RecvData, RecvRecord};
-use stream_replay::core::packet::{self, PacketType};
-use stream_replay::core::socket::{*};
+use core::packet::{self, PacketType};
+use core::socket::{*};
 
 const PONG_PORT_INC: u16 = 1024;
 

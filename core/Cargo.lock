@@ -766,7 +766,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "stream-replay-core"
+name = "stream-replayp-core"
 version = "0.1.0"
 dependencies = [
  "clap",
@@ -781,46 +781,6 @@ dependencies = [
  "serde",
  "serde_json",
  "spin_sleep",
- "windows",
-]
-
-[[package]]
-name = "stream-replay-rx"
-version = "0.1.0"
-dependencies = [
- "clap",
- "env_logger",
- "flume",
- "libc",
- "log",
- "ndarray",
- "ndarray-npy",
- "pyo3",
- "rand",
- "serde",
- "serde_json",
- "spin_sleep",
- "stream-replay-core",
- "windows",
-]
-
-[[package]]
-name = "stream-replay-tx"
-version = "0.1.0"
-dependencies = [
- "clap",
- "env_logger",
- "flume",
- "libc",
- "log",
- "ndarray",
- "ndarray-npy",
- "pyo3",
- "rand",
- "serde",
- "serde_json",
- "spin_sleep",
- "stream-replay-core",
  "windows",
 ]
 

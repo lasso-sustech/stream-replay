@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use std::sync::mpsc::Sender;
-use stream_replay::core::packet::{self, PacketStruct, PacketType};
+use core::packet::{self, PacketStruct, PacketType};
 
 use crate::statistic::stuttering::Stutter;
 #[derive(Default)]

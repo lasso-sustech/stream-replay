@@ -1,4 +1,4 @@
-use stream_replay::core::packet::{self, PacketType};
+use core::packet::{self, PacketType};
 use crate::link::Link;
 
 type OffsetPacket = (u16, PacketType);

@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use log::info;
 
-use stream_replay::core::logger::init_log;
+use core::logger::init_log;
 use std::time::SystemTime;
 // use std::rc::Rc;
 
