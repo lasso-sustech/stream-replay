@@ -21,6 +21,81 @@ type GuardedThrottler = Arc<Mutex<RateThrottler>>;
 type GuardedTxPartCtler = Arc<Mutex<TxPartCtler>>;
 type SokcetInfo = HashMap<String, flume::Sender<PacketStruct>>;
 
+pub const STREAM_PROTO: &str = "stream://";
+
+pub fn stream_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtler, rtt_tx: Option<RttSender>, params: ConnParams, socket_infos:SokcetInfo, dest: BufferReceiver)
+{
+    let mut template = PacketStruct::new(params.port);
+    let stop_time  = SystemTime::now().checked_add( Duration::from_secs_f64(params.duration[1]) ).unwrap();
+
+    while SystemTime::now() <= stop_time {
+        // 0. wait for the next packet
+        let buffer = dest.recv().unwrap();
+        let size_bytes = buffer.len();
+
+        // 1. generate packets
+        let mut packets: Vec<PacketStruct> = Vec::new();
+        let (_num, _remains) = (size_bytes/MAX_PAYLOAD_LEN, size_bytes%MAX_PAYLOAD_LEN);
+        let num = _num + if _remains > 0 { 1 } else { 0 };
+        template.next_seq(_num, _remains);
+
+        let mut packet_states = tx_part_ctler.lock().unwrap().get_packet_states(num);
+        let mut rng = thread_rng();
+        packet_states.shuffle(&mut rng);
+
+        for packet_state in packet_states {
+            for (offset, packet_type) in packet_state {
+                let length = if offset == (num - 1) as u16 {
+                    _remains as u16
+                } else {
+                    MAX_PAYLOAD_LEN as u16
+                };
+
+                template.set_length(length);
+                template.set_offset(offset);
+                template.set_indicator(packet_type);
+                template.set_payload(&buffer[
+                    (offset as usize * MAX_PAYLOAD_LEN) ..
+                    (offset as usize * MAX_PAYLOAD_LEN) + length as usize
+                ]);
+
+                packets.push(template.clone());
+            }
+        }
+
+        // 2. append to application-layer queue
+        throttler.lock().unwrap().prepare( packets );
+        // report RTT
+        if let Some(ref r_tx) = rtt_tx {
+            r_tx.send(template.seq).unwrap();
+        }
+
+        // 3. process queue, aware of blocked status
+        while SystemTime::now() < stop_time {
+            match throttler.lock().unwrap().try_consume(|mut packet| {
+                let time_now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64();
+                packet.timestamp = time_now;
+                match tx_part_ctler.lock() {
+                    Ok(controller) => {
+                        let ip_addr = controller.packet_to_ipaddr(packet.indicators.clone());
+                        if let Some(sender) = socket_infos.get(&ip_addr) {
+                            sender.send(packet).unwrap();
+                        }
+                    }
+                    Err(_) => (),
+                }
+                true
+            }) {
+                Some(_) => continue,
+                None=> break
+            }
+        }
+    }
+
+    //reset throttler
+    throttler.lock().unwrap().reset();
+}
+
 pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtler, rtt_tx: Option<RttSender>,
     params: ConnParams, socket_infos:SokcetInfo)
 {
@@ -46,7 +121,7 @@ pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
 
             // 1. generate packets
             let mut packets = Vec::new();
-            let (_num, _remains) = (size_bytes/MAX_PAYLOAD_LEN, size_bytes%MAX_PAYLOAD_LEN); 
+            let (_num, _remains) = (size_bytes/MAX_PAYLOAD_LEN, size_bytes%MAX_PAYLOAD_LEN);
             let num = _num + if _remains > 0 { 1 } else { 0 };
             template.next_seq(_num, _remains);
             let mut packet_states: Vec<Vec<(u16, PacketType)>> = tx_part_ctler.lock().unwrap().get_packet_states(num);
@@ -118,6 +193,9 @@ pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
 pub struct SourceManager{
     pub name: String,
     stream: StreamParam,
+    #[allow(dead_code)]
+    pub source: Vec<BufferSender>,
+    dest: Vec<BufferReceiver>,
     //
     start_timestamp: SystemTime,
     stop_timestamp: SystemTime,
@@ -132,11 +210,11 @@ pub struct SourceManager{
 impl SourceManager {
     pub fn new(stream: StreamParam, window_size:usize) -> Self {
         let (StreamParam::UDP(ref params) | StreamParam::TCP(ref params)) = stream;
-        let name = stream.name();
+        let mut name = stream.name();
 
         let socket_infos = vec![dispatch(params.links.clone(), params.tos)].into();
-        
-        
+
+
         let throttler = Arc::new(Mutex::new(
             RateThrottler::new(name.clone(), params.throttle, window_size, params.no_logging, params.loops != usize::MAX)
         ));
@@ -154,7 +232,15 @@ impl SourceManager {
         let start_timestamp = SystemTime::now();
         let stop_timestamp = SystemTime::now();
 
-        Self{ name, stream, throttler, rtt, tx_part_ctler, socket_infos, start_timestamp, stop_timestamp }
+        let (source, dest) = if params.npy_file.starts_with(STREAM_PROTO) {
+            name = params.npy_file.clone();
+            let (tx, rx) = flume::unbounded();
+            (vec![tx], vec![rx])
+        } else {
+            (vec![], vec![])
+        };
+
+        Self{ name, stream, throttler, rtt, tx_part_ctler, socket_infos, start_timestamp, stop_timestamp, source, dest }
     }
 
     pub fn throttle(&self, throttle:f64) {
@@ -209,9 +295,15 @@ impl SourceManager {
         self.start_timestamp = _now + Duration::from_secs_f64( params.duration[0] );
         self.stop_timestamp = _now + Duration::from_secs_f64( params.duration[1] );
 
+        let dest = self.dest.pop();
         let socket_infos = self.socket_infos.pop().unwrap();
         let source = thread::spawn(move || {
-            source_thread(throttler, tx_part_ctler, rtt_tx, params, socket_infos);
+            if params.npy_file.starts_with(STREAM_PROTO) {
+                let dest = dest.unwrap();
+                stream_thread(throttler, tx_part_ctler, rtt_tx, params, socket_infos, dest)
+            } else {
+                source_thread(throttler, tx_part_ctler, rtt_tx, params, socket_infos);
+            }
         });
 
         println!("{}. {} on ...", index, self.stream);
