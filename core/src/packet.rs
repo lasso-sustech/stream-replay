@@ -9,6 +9,9 @@ pub const MAX_PAYLOAD_LEN:usize = UDP_MAX_LENGTH - APP_HEADER_LENGTH;
 pub type PacketSender   = flume::Sender<PacketStruct>;
 pub type PacketReceiver = flume::Receiver<PacketStruct>;
 
+pub type BufferSender = flume::Sender<Vec<u8>>;
+pub type BufferReceiver = flume::Receiver<Vec<u8>>;
+
 pub unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
     ::std::slice::from_raw_parts(
         (p as *const T) as *const u8,
@@ -62,6 +65,10 @@ impl PacketStruct {
 
     pub fn set_indicator(&mut self, packet_type: PacketType){
         self.indicators = to_indicator(packet_type);
+    }
+
+    pub fn set_payload(&mut self, payload: &[u8]) {
+        self.payload[..payload.len()].copy_from_slice(payload);
     }
 }
 

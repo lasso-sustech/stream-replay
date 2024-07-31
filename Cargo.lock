@@ -24,6 +24,11 @@ dependencies = [
  "jni",
  "ndk",
  "ndk-sys",
+ "serde",
+ "serde_json",
+ "stream-replay-core",
+ "stream-replay-rx",
+ "stream-replay-tx",
 ]
 
 [[package]]

@@ -6,6 +6,9 @@ edition = "2021"
 [[bin]]
 name = "stream-replay-rx"
 
+[lib]
+name = "stream_replay_rx"
+
 [dependencies]
 rand = "0.8.5"
 serde_json = "1.0"

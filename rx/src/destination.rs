@@ -6,7 +6,7 @@ use std::io::ErrorKind;
 
 use crate::record::{RecvData, RecvRecord};
 use core::packet::{self, PacketType};
-use core::socket::{*};
+use core::socket::*;
 
 const PONG_PORT_INC: u16 = 1024;
 

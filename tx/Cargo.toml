@@ -7,6 +7,9 @@ edition = "2021"
 name = "stream-replay-tx"
 path = "src/main.rs"
 
+[lib]
+name = "stream_replay_tx"
+
 [dependencies]
 rand = "0.8.5"
 serde_json = "1.0"
