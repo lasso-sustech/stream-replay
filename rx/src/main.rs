@@ -2,7 +2,7 @@ mod destination;
 mod record;
 mod statistic;
 
-use std::sync::{mpsc, Arc, Mutex};
+use std::{fs::File, io::Write, sync::{mpsc, Arc, Mutex}};
 use clap::Parser;
 use record::RecvData;
 use crate::destination::*;
@@ -18,6 +18,7 @@ fn main() {
     recv_data.lock().unwrap().tx = Some(tx);
 
     // Extract duration from args
+    let port = args.port;
     let duration = args.duration;
     
     let lock = Arc::new(Mutex::new(false));
@@ -43,5 +44,11 @@ fn main() {
     let non_received = recv_data.last_seq - recv_data.recevied;
     println!("Packet loss rate: {:.5}", non_received as f64 / recv_data.last_seq as f64);
     println!("Stuttering rate: {:.5}", recv_data.stutter.get_stuttering());
+
+    // Write the data to stuttering file
+    let mut logger = File::create( format!("logs/stuttering-{port}.txt", ) ).unwrap();
+    for val in &recv_data.stutter.ack_times {
+        logger.write_all(format!("{:?}\n", val).as_bytes()).unwrap();
+    }
 }
 

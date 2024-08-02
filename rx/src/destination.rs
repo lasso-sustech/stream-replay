@@ -90,7 +90,7 @@ fn handle_rtt(
             }
         };
         buffer[18..19].copy_from_slice(packet::to_indicator(packet_type).to_le_bytes().as_ref());
-        let ping_addr = format!("{}:{}", src_addr.ip(), args.port + PONG_PORT_INC);
+        let ping_addr = format!("{}:{}", args.src_ipaddrs[0], args.port + PONG_PORT_INC);
         send_ack(pong_socket, buffer, &ping_addr);
     }
 
