@@ -220,6 +220,7 @@ impl SourceManager {
         ));
         let link_num = params.links.len();
         let target_rtt = params.target_rtt;
+
         let rtt =  match params.calc_rtt {
             false => None,
             true => Some( RttRecorder::new( &name, params.port, link_num, target_rtt) )

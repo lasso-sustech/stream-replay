@@ -36,7 +36,11 @@ fn record_thread(rx: RttReceiver, records: GuardedSeqRecords) {
 fn pong_recv_thread(name: String, port: u16, seq_records: GuardedSeqRecords, rtt_records: GuardedRttRecords, tx_ipaddr:String) {
     let mut buf = [0; 2048];
     let sock = UdpSocket::bind( format!("{}:{}",tx_ipaddr, port)).unwrap();
-    let mut logger = File::create( format!("logs/rtt-{}.txt", name) ).unwrap();
+    let mut logger = if cfg!(target_os = "android") {
+        None
+    } else {
+        Some( File::create( format!("logs/rtt-{}.txt", name) ).unwrap() )
+    };
 
     while let Ok(_) = sock.recv_from(&mut buf) {
         let seq = u32::from_le_bytes( buf[..4].try_into().unwrap() );
@@ -52,8 +56,10 @@ fn pong_recv_thread(name: String, port: u16, seq_records: GuardedSeqRecords, rtt
                 let mut _records = seq_records.lock().unwrap(); 
                 _records.remove(&seq);
             }
-            let message = format!("{} {:.6} {:.6} \n", seq, rtt, packet::channel_info(indicator));
-            logger.write_all( message.as_bytes() ).unwrap();
+            if let Some(ref mut logger) = logger {
+                let message = format!("{} {:.6} {:.6} \n", seq, rtt, packet::channel_info(indicator));
+                logger.write_all( message.as_bytes() ).unwrap();
+            }
         };
     }
 }
@@ -75,7 +81,6 @@ impl RttRecorder {
         let seq_records1: GuardedSeqRecords = Arc::new(Mutex::new(HashMap::new()));
         let seq_records2 = seq_records1.clone();
         let rtt_records  = Arc::clone(&self.rtt_records);
-        
 
         self.record_handle = Some(
             thread::spawn(move || { record_thread(rx, seq_records1); })
