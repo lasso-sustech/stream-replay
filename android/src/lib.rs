@@ -6,6 +6,7 @@ pub mod android {
     use serde_json;
 
     use core::packet::*;
+    use core::logger::logging;
     use stream_replay_tx::conf::*;
     use stream_replay_tx::link::*;
     use stream_replay_tx::ipc::*;
@@ -24,19 +25,6 @@ pub mod android {
     pub static mut ASSET_MANAGER: Option<AssetManager> = None;
     pub static mut TX_SENDER_MAP: Option<HashMap<String, BufferSender>> = None;
     pub static mut RX_RECEIVER_MAP: Option<GuardedHashMap<u16, RegularBufferReceiver>> = None;
-
-    pub fn logging(s: &str) {
-        use std::ffi::CString;
-        let s = CString::new(s).unwrap();
-        let tag = CString::new("RustStreamReplay").unwrap();
-        unsafe {
-            ndk_sys::__android_log_print(
-                ndk_sys::android_LogPriority::ANDROID_LOG_INFO.0.try_into().unwrap(),
-                tag.as_ptr(),
-                s.as_ptr()
-            );
-        }
-    }
 
     fn start_tx(
         manifest_file: String,

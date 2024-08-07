@@ -3,7 +3,7 @@ use rand::prelude::*;
 use rand::distributions::Standard;
 use serde::{Serialize, Deserialize};
 
-use crate::link::Link;
+use crate::{link::Link, source::STREAM_PROTO};
 
 const fn _default_duration() -> [f64; 2] { [0.0, f64::MAX] }
 const fn _default_loops() -> usize { usize::MAX }
@@ -60,17 +60,19 @@ impl StreamParam {
         let ( Self::TCP(ref mut param) | Self::UDP(ref mut param) ) = self;
 
         // validate npy file existence
-        let cwd = std::env::current_dir().unwrap();
-        let path_trail1 = cwd.join( &param.npy_file );
-        let path_trail2 = root.unwrap_or( cwd.as_path() ).join( &param.npy_file );
-        if path_trail1.exists() {
-            param.npy_file = String::from( path_trail1.to_str().unwrap() );
-        }
-        else if path_trail2.exists() {
-            param.npy_file = String::from( path_trail2.to_str().unwrap() );
-        }
-        else {
-            return None;
+        if !param.npy_file.starts_with(STREAM_PROTO) {
+            let cwd = std::env::current_dir().unwrap();
+            let path_trail1 = cwd.join( &param.npy_file );
+            let path_trail2 = root.unwrap_or( cwd.as_path() ).join( &param.npy_file );
+            if path_trail1.exists() {
+                param.npy_file = String::from( path_trail1.to_str().unwrap() );
+            }
+            else if path_trail2.exists() {
+                param.npy_file = String::from( path_trail2.to_str().unwrap() );
+            }
+            else {
+                return None;
+            }
         }
 
         // validate duration

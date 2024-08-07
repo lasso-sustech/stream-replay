@@ -812,6 +812,7 @@ dependencies = [
  "log",
  "ndarray",
  "ndarray-npy",
+ "ndk-sys",
  "rand",
  "serde",
  "serde_json",

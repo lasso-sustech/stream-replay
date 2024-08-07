@@ -28,3 +28,6 @@ libc = "0.2"
 version = "0.46"
 features=[ "Win32_System_IO", "Win32_Foundation", "Win32_Networking_WinSock", "Win32_NetworkManagement_QoS",
             "Win32_System_Diagnostics_Debug"]
+
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-sys = { version = "0.6" }

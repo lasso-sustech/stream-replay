@@ -98,6 +98,9 @@ fn handle_rtt(
         data.stutter.update( std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() );
         if args.rx_mode {
             res = Some(_record.gather());
+            if let Some(ref tx) = data.tx {
+                tx.send(res.clone().unwrap()).unwrap();
+            }
         }
         data.recv_records.remove(&seq);
         data.recevied += 1;
