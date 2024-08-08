@@ -1,5 +1,5 @@
 use core::packet::PacketType;
-
+use std::cmp::Ordering;
 #[derive(Debug, Clone)]
 struct RTTEntry {
     seq: usize,
@@ -82,20 +82,37 @@ impl RttRecords {
         self.queue[index].as_ref().unwrap().completed
     }
 
+    fn average_between_quantiles(values: &mut Vec<f64>) -> f64 {
+        if values.is_empty() {
+            0.0
+        } else {
+            values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+            
+            let len = values.len();
+            let pos_10 = ((len as f64) * 0.10).floor() as usize;
+            let pos_90 = ((len as f64) * 0.90).floor() as usize;
+    
+            let slice = &values[pos_10..pos_90];
+            slice.iter().sum::<f64>() / slice.len() as f64
+        }
+    }
+
     pub fn statistic(&mut self) -> (f64, Vec<f64>, f64, Vec<f64>) {
-        //get the average rtt and list of average channel rtt
-        let mut rtt_sum = 0.0;
+        // Vectors to store RTT and channel RTT values
+        let mut rtt_values = Vec::new();
+        let mut channel_rtts = vec![Vec::new(); self.max_links];
+    
         let mut outages = 0.0;
         let mut ch_outages = vec![0; self.max_links];
-        let mut channel_rtts = vec![0.0; self.max_links];
         let mut count = vec![0; self.max_links + 1];
+    
         for entry in &mut self.queue {
             if let Some(ref mut entry) = entry {
                 for (i, rtt_opt) in entry.channel_rtts.iter().enumerate() {
-                    if let Some(rtt) = rtt_opt{
-                        if !entry.visited_rtt[i + 1]{
+                    if let Some(rtt) = rtt_opt {
+                        if !entry.visited_rtt[i + 1] {
                             entry.visited_rtt[i + 1] = true;
-                            channel_rtts[i] += rtt;
+                            channel_rtts[i].push(*rtt);
                             if rtt > &self.target_rtt {
                                 ch_outages[i] += 1;
                             }
@@ -104,7 +121,7 @@ impl RttRecords {
                     }
                 }
                 if entry.completed && !entry.visited_rtt[0] {
-                    rtt_sum += entry.rtt;
+                    rtt_values.push(entry.rtt);
                     if entry.rtt > self.target_rtt {
                         outages += 1.0;
                     }
@@ -113,30 +130,27 @@ impl RttRecords {
                 }
             }
         }
-        let rtt_avg = if count[0] == 0 {
-            0.0
-        } else {
-            rtt_sum / count[0] as f64
-        };
-
+    
+        let rtt_avg = RttRecords::average_between_quantiles(&mut rtt_values);
+    
         let outage_rate = if count[0] == 0 {
             0.0
         } else {
             outages / count[0] as f64
         };
-
+    
         let ch_outage_rates: Vec<f64> = ch_outages
             .iter()
             .enumerate()
             .map(|(i, &x)| if count[i + 1] == 0 { 0.0 } else { x as f64 / count[i + 1] as f64 })
             .collect();
-        
+    
         let channel_rtts_avg: Vec<f64> = channel_rtts
-            .iter()
-            .enumerate()
-            .map(|(i, &x)| if count[i + 1] == 0 { 0.0 } else { x / count[i + 1] as f64 })
+            .iter_mut()
+            .map(|rtts| RttRecords::average_between_quantiles(rtts))
             .collect();
 
         (rtt_avg, channel_rtts_avg, outage_rate, ch_outage_rates)
     }
+    
 }
