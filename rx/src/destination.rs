@@ -23,6 +23,7 @@ pub struct Args {
 pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mutex<bool>>){
     let addr = format!("0.0.0.0:{}", args.port);    
     let socket = UdpSocket::bind(&addr).unwrap();
+    socket.set_nonblocking(true).unwrap();
 
     let addr = format!("0.0.0.0");
     // let pong_socket = UdpSocket::bind(&addr).unwrap();
