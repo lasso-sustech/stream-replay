@@ -70,7 +70,7 @@ impl RttRecorder {
         let port = port + PONG_PORT_INC; //pong recv port
         let record_handle = None;
         let recv_handle = None;
-        let rtt_records = Arc::new(Mutex::new(RttRecords::new(1000, mul_link_num, target_rtt)));
+        let rtt_records = Arc::new(Mutex::new(RttRecords::new(200, mul_link_num, target_rtt)));
         RttRecorder{ name, port, record_handle, recv_handle, rtt_records }
     }
 
