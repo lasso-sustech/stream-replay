@@ -86,9 +86,11 @@ impl RttRecords {
         if values.is_empty() {
             0.0
         } else {
-            values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
-            
             let len = values.len();
+            if len < 10 {
+                return values.iter().sum::<f64>() / len as f64;
+            }
+            values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
             let pos_10 = ((len as f64) * 0.10).floor() as usize;
             let pos_90 = ((len as f64) * 0.90).floor() as usize;
     
