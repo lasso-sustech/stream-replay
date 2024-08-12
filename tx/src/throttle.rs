@@ -8,7 +8,7 @@ type TIME = SystemTime;
 type SIZE = usize;
 
 static MAX_ERR_RATIO: f64 = 0.01;
-static CYCLED_RATIO: usize = 50;
+pub static CYCLED_RATIO: usize = 50;
 
 struct CycledVecDequeue<T> {
     size: usize,

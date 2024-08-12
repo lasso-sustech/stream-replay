@@ -79,7 +79,7 @@ pub fn stream_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
                     Ok(controller) => {
                         let ip_addr = controller.packet_to_ipaddr(packet.indicators.clone());
                         if let Some(sender) = socket_infos.get(&ip_addr) {
-                            sender.send(packet).unwrap();
+                            let _ = sender.try_send(packet);
                         }
                     }
                     Err(_) => (),
@@ -168,7 +168,7 @@ pub fn source_thread(throttler:GuardedThrottler, tx_part_ctler:GuardedTxPartCtle
                     Ok(controller) => {
                         let ip_addr = controller.packet_to_ipaddr(packet.indicators.clone());
                         if let Some(sender) = socket_infos.get(&ip_addr) {
-                            sender.send(packet).unwrap();
+                            let _ = sender.try_send(packet);
                         }
                     }
                     Err(_) => (),
@@ -216,7 +216,7 @@ impl SourceManager {
 
 
         let throttler = Arc::new(Mutex::new(
-            RateThrottler::new(name.clone(), params.throttle, window_size, params.no_logging, params.loops != usize::MAX)
+            RateThrottler::new(name.clone(), params.throttle, window_size, params.no_logging, false)
         ));
         let link_num = params.links.len();
         let target_rtt = params.target_rtt;

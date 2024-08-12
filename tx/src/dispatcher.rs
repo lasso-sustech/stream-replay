@@ -19,7 +19,7 @@ pub fn dispatch(links: Vec<Link>, tos:u8) -> HashMap<String, flume::Sender<Packe
         let tx_ipaddr = link.tx_ipaddr.clone();
         let rx_addr =  format!("{}:0",link.rx_ipaddr.clone()).to_socket_addrs().unwrap().next().unwrap();
         let socket = create_udp_socket(tos, tx_ipaddr.clone());
-        let (socket_tx, socket_rx) = flume::unbounded::<PacketStruct>();
+        let (socket_tx, socket_rx) = flume::bounded::<PacketStruct>(50000);
         if let Some(socket) = socket {
             socket.set_nonblocking(true).unwrap();
             socket_infos.insert(tx_ipaddr.clone(),  socket_tx );
