@@ -16,6 +16,8 @@ pub struct Args {
     pub duration: u32,
     pub calc_rtt : bool,
     pub rx_mode: bool,
+    #[clap(default_value_t=1)]
+    pub sample_rate: u32,
     #[clap(long)]
     pub src_ipaddrs: Vec<String>,
 }
@@ -67,6 +69,10 @@ fn handle_rtt(
 ) -> Option<Vec<u8>> {
     let seq = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
     data.last_seq = if seq > data.last_seq { seq } else { data.last_seq };
+
+    if seq % args.sample_rate != 0 {
+        return None
+    } 
 
     data.recv_records.entry(seq).or_insert_with(RecvRecord::new).record(buffer);
     let _record = data.recv_records.get_mut(&seq).unwrap();
