@@ -10,13 +10,16 @@ use core::socket::*;
 
 const PONG_PORT_INC: u16 = 1024;
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about=None)]
 pub struct Args {
     pub port: u16,
     pub duration: u32,
+    #[clap(long)]
     pub calc_rtt : bool,
+    #[clap(long)]
     pub rx_mode: bool,
-    #[clap(default_value_t=1)]
+    #[clap(long, default_value_t = 1)]
     pub sample_rate: u32,
     #[clap(long)]
     pub src_ipaddrs: Vec<String>,
@@ -26,7 +29,6 @@ pub fn recv_thread(args: Args, recv_params: Arc<Mutex<RecvData>>, lock: Arc<Mute
     let addr = format!("0.0.0.0:{}", args.port);    
     let socket = UdpSocket::bind(&addr).unwrap();
     socket.set_nonblocking(true).unwrap();
-
     let addr = format!("0.0.0.0");
     // let pong_socket = UdpSocket::bind(&addr).unwrap();
     let pong_socket = create_udp_socket(192, addr.clone());
