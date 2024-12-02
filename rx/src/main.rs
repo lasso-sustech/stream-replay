@@ -47,8 +47,8 @@ fn main() {
 
     // Write the data to stuttering file
     let mut logger = File::create( format!("logs/stuttering-{port}.txt", ) ).unwrap();
-    for val in &recv_data.stutter.ack_times {
-        logger.write_all(format!("{:?}\n", val).as_bytes()).unwrap();
+    for (pos, val) in recv_data.stutter.ack_times.iter().enumerate() {
+        logger.write_all(format!("{} {:?}\n", recv_data.stutter.additional_infos[pos], val).as_bytes()).unwrap();
     }
 }
 

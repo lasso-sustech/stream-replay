@@ -2,6 +2,7 @@ pub struct Stutter {
     pub start_time: f64,
     pub end_time: f64,
     pub ack_times: Vec<f64>,
+    pub additional_infos: Vec<String>,
 }
 
 impl Stutter {
@@ -10,16 +11,18 @@ impl Stutter {
             start_time: 0.0,
             end_time: 0.0,
             ack_times: vec![],
+            additional_infos: vec![],
         }
     }
 
-    pub fn update(&mut self, time: f64) {
+    pub fn update(&mut self, time: f64, additional_info: String) {
         if self.start_time == 0.0 {
             self.start_time = time;
         } else {
             self.end_time = time;
         }
         self.ack_times.push(time);
+        self.additional_infos.push(additional_info);
     }
 
     pub fn get_stuttering(&self) -> f64 {

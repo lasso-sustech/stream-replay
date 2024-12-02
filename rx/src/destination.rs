@@ -104,7 +104,7 @@ fn handle_rtt(
     }
 
     if _record.is_complete() {
-        data.stutter.update( std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() );
+        data.stutter.update( std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64(), format!("{} {}", seq, _record.data_size));
         if args.rx_mode {
             res = Some(_record.gather());
             if let Some(ref tx) = data.tx {

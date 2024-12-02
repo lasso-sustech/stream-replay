@@ -49,6 +49,7 @@ impl RecvData{
 pub struct RecvRecord {
     pub packets: HashMap<u16, PacketStruct>, // Use a HashMap to store packets by their offset
     pub is_ack: IsACK,
+    pub data_size: u32,
     offsets: RecvOffsets,
     is_complete: RecvComplete,
 }
@@ -58,6 +59,7 @@ impl RecvRecord {
         Self{
             packets: HashMap::<u16, PacketStruct>::new(),
             is_ack : (false, false),
+            data_size: 0,
             offsets: RecvOffsets::default(),
             is_complete: RecvComplete::default(),
         }
@@ -65,6 +67,7 @@ impl RecvRecord {
     pub fn record(&mut self, data: &[u8]) {
         let packet = packet::from_buffer(data);
         let offset = Some(packet.offset);
+        self.data_size += packet.length as u32;
 
         match packet::get_packet_type(packet.indicators) {
             PacketType::SL  => self.offsets.sl = offset,
